@@ -90,7 +90,6 @@ public class SwiftBlobStore implements BlobStore {
      * Delete an arbitrary BlobPath from our store.
      * @param path The blob path to delete
      */
-    @Override
     public void delete(final BlobPath path) {
         try {
             SwiftPerms.exec((PrivilegedAction<Void>) () -> {

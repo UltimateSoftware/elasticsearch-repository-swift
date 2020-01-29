@@ -23,6 +23,7 @@ import org.elasticsearch.env.Environment;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.plugins.RepositoryPlugin;
 import org.elasticsearch.repositories.Repository;
+import org.elasticsearch.threadpool.ThreadPool;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftService;
 
@@ -40,10 +41,12 @@ public class SwiftRepositoryPlugin extends Plugin implements RepositoryPlugin {
         return new SwiftService(settings);
     }
 
+
     @Override
-    public Map<String, Repository.Factory> getRepositories(Environment env, NamedXContentRegistry namedXContentRegistry) {
-        return Collections.singletonMap(SwiftRepository.TYPE,
-                (metadata) -> new SwiftRepository(metadata, env.settings(), namedXContentRegistry, createStorageService(env.settings())));
+    public Map<String, Repository.Factory> getRepositories(final Environment env, final NamedXContentRegistry registry,
+                                                           final ThreadPool threadPool) {
+        return Collections.singletonMap(SwiftRepository.TYPE, metadata -> new SwiftRepository(metadata,
+                metadata.settings(), registry, new SwiftService(metadata.settings()),  threadPool));
     }
 
     @Override
