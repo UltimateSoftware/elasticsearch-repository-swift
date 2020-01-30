@@ -53,6 +53,9 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
     private final boolean blobExistsCheckAllowed;
 
+    // Max page size for list requests. This cannot be increased over 9999.
+    private final int maxPageSize = 9999;
+
     /**
      * Constructor
      * @param path The BlobPath to find blobs in
@@ -107,7 +110,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             DeleteResult result = DeleteResult.ZERO;
             Collection<StoredObject> containerObjects;
             do {
-                containerObjects = blobStore.swift().list(keyPath, "", 9999);
+                containerObjects = blobStore.swift().list(keyPath, "", maxPageSize);
                 for (StoredObject so : containerObjects) {
                     try {
                         long size = so.getContentLength();
@@ -117,7 +120,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                         throw new RuntimeException(e);
                     }
                 }
-            } while (!containerObjects.isEmpty());
+            } while (containerObjects.size() == maxPageSize);
             return result;
         });
     }
