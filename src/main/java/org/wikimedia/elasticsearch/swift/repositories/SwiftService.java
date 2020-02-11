@@ -96,7 +96,7 @@ public class SwiftService extends AbstractLifecycleComponent {
             conf.setTenantName(tenantName);
             swiftUser = createAccount(conf);
         } catch (CommandException ce) {
-            String msg = String.format("Unable to authenticate to Swift Keystone %s/%s/%s/%s", url, username, password, tenantName);
+            String msg = "Unable to authenticate to Swift Keystone " + url + "/" + username + "/" + password + "/" + tenantName;
             throw new ElasticsearchException(msg, ce);
         }
         return swiftUser;

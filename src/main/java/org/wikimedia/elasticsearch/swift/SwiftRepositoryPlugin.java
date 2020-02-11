@@ -16,7 +16,6 @@
 
 package org.wikimedia.elasticsearch.swift;
 
-import org.elasticsearch.cluster.metadata.RepositoryMetaData;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.env.Environment;
