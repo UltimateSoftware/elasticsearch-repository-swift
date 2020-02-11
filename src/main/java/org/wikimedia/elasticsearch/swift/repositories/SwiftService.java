@@ -78,21 +78,26 @@ public class SwiftService extends AbstractLifecycleComponent {
         return SwiftPerms.exec(() -> new AccountFactory(conf).createAccount());
     }
 
-    public synchronized Account swiftKeyStone(String url, String username, String password, String tenantName,
+    public synchronized Account swiftKeyStone(String url,
+                                              String username,
+                                              String password,
+                                              String tenantName,
                                               String preferredRegion) {
         if (swiftUser != null) {
             return swiftUser;
         }
 
         try {
-            AccountConfig conf = getStandardConfig(url, username, password, AuthenticationMethod.KEYSTONE,
+            AccountConfig conf = getStandardConfig(url,
+                    username,
+                    password,
+                    AuthenticationMethod.KEYSTONE,
                     preferredRegion);
             conf.setTenantName(tenantName);
             swiftUser = createAccount(conf);
         } catch (CommandException ce) {
-            throw new ElasticsearchException(
-                    "Unable to authenticate to Swift Keystone " + url + "/" + username + "/" + password + "/"
-                            + tenantName, ce);
+            String msg = String.format("Unable to authenticate to Swift Keystone %s/%s/%s/%s", url, username, password, tenantName);
+            throw new ElasticsearchException(msg, ce);
         }
         return swiftUser;
     }
@@ -103,7 +108,10 @@ public class SwiftService extends AbstractLifecycleComponent {
         }
 
         try {
-            AccountConfig conf = getStandardConfig(url, username, password, AuthenticationMethod.TEMPAUTH,
+            AccountConfig conf = getStandardConfig(url,
+                    username,
+                    password,
+                    AuthenticationMethod.TEMPAUTH,
                     preferredRegion);
             swiftUser = createAccount(conf);
         } catch (CommandException ce) {
@@ -112,7 +120,10 @@ public class SwiftService extends AbstractLifecycleComponent {
         return swiftUser;
     }
 
-    private AccountConfig getStandardConfig(String url, String username, String password, AuthenticationMethod method,
+    private AccountConfig getStandardConfig(String url,
+                                            String username,
+                                            String password,
+                                            AuthenticationMethod method,
                                             String preferredRegion) {
         AccountConfig conf = new AccountConfig();
         conf.setAuthUrl(url);

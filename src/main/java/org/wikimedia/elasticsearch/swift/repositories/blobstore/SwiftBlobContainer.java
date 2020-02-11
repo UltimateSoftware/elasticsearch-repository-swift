@@ -24,7 +24,6 @@ import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.blobstore.DeleteResult;
 import org.elasticsearch.common.blobstore.support.AbstractBlobContainer;
 import org.elasticsearch.common.blobstore.support.PlainBlobMetaData;
-import org.javaswift.joss.exception.CommandException;
 import org.javaswift.joss.exception.NotFoundException;
 import org.javaswift.joss.model.Directory;
 import org.javaswift.joss.model.DirectoryOrObject;
@@ -64,11 +63,10 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     protected SwiftBlobContainer(BlobPath path, SwiftBlobStore blobStore) {
         super(path);
         this.blobStore = blobStore;
+
         String keyPath = path.buildAsString();
-        if (!keyPath.isEmpty() && !keyPath.endsWith("/")) {
-            keyPath = keyPath + "/";
-        }
-        this.keyPath = keyPath;
+        this.keyPath = keyPath.isEmpty() || keyPath.endsWith("/") ? keyPath : keyPath + "/";
+
         this.blobExistsCheckAllowed = keyPath.isEmpty() ||
             !blobStore.getSettings().getAsBoolean(SwiftRepository.Swift.MINIMIZE_BLOB_EXISTS_CHECKS_SETTING.getKey(),
                                         true);
@@ -80,7 +78,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      * @return true if exist
      */
     public boolean blobExists(final String blobName) {
-        return SwiftPerms.exec(() -> blobStore.swift().getObject(buildKey(blobName)).exists());
+        return SwiftPerms.exec(() -> blobStore.getContainer().getObject(buildKey(blobName)).exists());
     }
 
     /**
@@ -89,18 +87,27 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      */
     @Override
     public void deleteBlob(final String blobName) throws IOException {
-        CommandException ex = SwiftPerms.exec(() -> {
-            StoredObject object = blobStore.swift().getObject(buildKey(blobName));
+        Throwable ex = SwiftPerms.exec(() -> {
             try {
+                StoredObject object = blobStore.getContainer().getObject(buildKey(blobName));
+                if (object == null) {
+                    return new NoSuchFileException(blobName, null, "Requested blob was not found");
+                }
                 object.delete();
                 return null;
-            } catch (CommandException e) {
+
+            } catch (NotFoundException e) {
+                return new NoSuchFileException(blobName, null, "Requested blob was not found");
+
+            } catch (Throwable e) {
                 return e;
             }
         });
 
-        if (ex != null) {
-            throw new NoSuchFileException(blobName, null, "Requested blob was not found " + ex);
+        if (ex instanceof IOException){
+            throw (IOException)ex;
+        } else if (ex != null){
+            throw new IOException("Requested blob was not deleted " + blobName, ex);
         }
     }
 
@@ -110,7 +117,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             DeleteResult result = DeleteResult.ZERO;
             Collection<StoredObject> containerObjects;
             do {
-                containerObjects = blobStore.swift().list(keyPath, "", maxPageSize);
+                containerObjects = blobStore.getContainer().list(keyPath, "", maxPageSize);
                 for (StoredObject so : containerObjects) {
                     try {
                         long size = so.getContentLength();
@@ -136,9 +143,9 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             ImmutableMap.Builder<String, BlobMetaData> blobsBuilder = ImmutableMap.builder();
             Collection<DirectoryOrObject> files;
             if (blobNamePrefix != null) {
-                files = blobStore.swift().listDirectory(new Directory(buildKey(blobNamePrefix), '/'));
+                files = blobStore.getContainer().listDirectory(new Directory(buildKey(blobNamePrefix), '/'));
             } else {
-                files = blobStore.swift().listDirectory(new Directory(keyPath, '/'));
+                files = blobStore.getContainer().listDirectory(new Directory(keyPath, '/'));
             }
             if (files != null && !files.isEmpty()) {
                 for (DirectoryOrObject object : files) {
@@ -161,11 +168,11 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     }
 
     @Override
-    public Map<String, BlobContainer> children() throws IOException {
+    public Map<String, BlobContainer> children() {
         return SwiftPerms.exec(() -> {
             ImmutableMap.Builder<String, BlobContainer> blobsBuilder = ImmutableMap.builder();
             Collection<DirectoryOrObject> files;
-            files = blobStore.swift().listDirectory(new Directory(keyPath, '/'));
+            files = blobStore.getContainer().listDirectory(new Directory(keyPath, '/'));
             if (files != null && !files.isEmpty()) {
                 for (DirectoryOrObject object : files) {
                     if (object.isDirectory()) {
@@ -196,8 +203,8 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         try {
             final InputStream is = SwiftPerms.exec(
                     (PrivilegedAction<InputStream>) () -> new BufferedInputStream(
-                            blobStore.swift().getObject(buildKey(blobName)).downloadObjectAsInputStream(),
-                            blobStore.bufferSizeInBytes()));
+                            blobStore.getContainer().getObject(buildKey(blobName)).downloadObjectAsInputStream(),
+                            (int)blobStore.getBufferSizeInBytes()));
 
             if (null == is) {
                 throw new NoSuchFileException("Blob object [" + blobName + "] not found.");
@@ -218,7 +225,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             throw new FileAlreadyExistsException("blob [" + blobName + "] already exists, cannot overwrite");
         }
         SwiftPerms.exec(() -> {
-            blobStore.swift().getObject(buildKey(blobName)).uploadObject(in);
+            blobStore.getContainer().getObject(buildKey(blobName)).uploadObject(in);
             return null;
         });
     }

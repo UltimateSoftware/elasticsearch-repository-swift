@@ -34,10 +34,10 @@ import org.wikimedia.elasticsearch.swift.SwiftPerms;
  */
 public class SwiftBlobStore implements BlobStore {
     // How much to buffer our blobs by
-    private final int bufferSizeInBytes;
+    private final long bufferSizeInBytes;
 
     // Our Swift container. This is important.
-    private final Container swift;
+    private final Container container;
 
     private final Settings settings;
 
@@ -45,32 +45,32 @@ public class SwiftBlobStore implements BlobStore {
      * Constructor. Sets up the container mostly.
      * @param settings Settings for our repository. Only care about buffer size.
      * @param auth swift account info
-     * @param container swift container
+     * @param containerName swift container
      */
-    public SwiftBlobStore(Settings settings, final Account auth, final String container) {
+    public SwiftBlobStore(Settings settings, final Account auth, final String containerName) {
         this.settings = settings;
-        this.bufferSizeInBytes = (int)settings.getAsBytesSize("buffer_size", new ByteSizeValue(100, ByteSizeUnit.KB)).getBytes();
-        swift = SwiftPerms.exec(() -> {
-            Container swift = auth.getContainer(container);
-            if (!swift.exists()) {
-                swift.create();
-                swift.makePublic();
+        this.bufferSizeInBytes = settings.getAsBytesSize("buffer_size", new ByteSizeValue(100, ByteSizeUnit.KB)).getBytes();
+        this.container = SwiftPerms.exec(() -> {
+            Container container = auth.getContainer(containerName);
+            if (!container.exists()) {
+                container.create();
+                container.makePublic();
             }
-            return swift;
+            return container;
         });
     }
 
     /**
      * @return the container
      */
-    public Container swift() {
-        return swift;
+    public Container getContainer() {
+        return container;
     }
 
     /**
      * @return buffer size
      */
-    public int bufferSizeInBytes() {
+    public long getBufferSizeInBytes() {
         return bufferSizeInBytes;
     }
 
@@ -88,7 +88,7 @@ public class SwiftBlobStore implements BlobStore {
             if (directoryOrObject.isObject()) {
                 directoryOrObject.getAsObject().delete();
             } else {
-                deleteByPrefix(swift.listDirectory(directoryOrObject.getAsDirectory()));
+                deleteByPrefix(container.listDirectory(directoryOrObject.getAsDirectory()));
             }
         }
     }

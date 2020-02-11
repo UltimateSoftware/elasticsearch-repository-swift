@@ -16,8 +16,8 @@
 
 package org.wikimedia.elasticsearch.swift;
 
+import org.elasticsearch.cluster.metadata.RepositoryMetaData;
 import org.elasticsearch.common.settings.Setting;
-import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.plugins.Plugin;
@@ -36,23 +36,26 @@ import java.util.Map;
  * Our base plugin stuff.
  */
 public class SwiftRepositoryPlugin extends Plugin implements RepositoryPlugin {
-    // overridable for tests
-    protected SwiftService createStorageService(Settings settings) {
-        return new SwiftService(settings);
+    @Override
+    public Map<String, Repository.Factory> getRepositories(final Environment env,
+                                                           final NamedXContentRegistry registry,
+                                                           final ThreadPool threadPool) {
+        return Collections.singletonMap(SwiftRepository.TYPE, repositoryFactory(registry, threadPool));
     }
 
-
-    @Override
-    public Map<String, Repository.Factory> getRepositories(final Environment env, final NamedXContentRegistry registry,
-                                                           final ThreadPool threadPool) {
-        return Collections.singletonMap(SwiftRepository.TYPE, metadata -> new SwiftRepository(metadata,
-                metadata.settings(), registry, new SwiftService(metadata.settings()),  threadPool));
+    // for testability
+    protected Repository.Factory repositoryFactory(final NamedXContentRegistry registry,
+                                                   final ThreadPool threadPool){
+        return metadata -> new SwiftRepository(metadata,
+                metadata.settings(),
+                registry,
+                new SwiftService(metadata.settings()),
+                threadPool);
     }
 
     @Override
     public List<String> getSettingsFilter() {
-        return Collections.singletonList(
-                SwiftRepository.Swift.PASSWORD_SETTING.getKey());
+        return Collections.singletonList(SwiftRepository.Swift.PASSWORD_SETTING.getKey());
     }
 
     @Override

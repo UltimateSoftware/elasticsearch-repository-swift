@@ -22,8 +22,13 @@ import java.util.Locale;
 
 public class SwiftAccountFactory {
 
-    public static Account createAccount(SwiftService swiftService, String url, String username, String password,
-                                        String tenantName, String authMethod, String preferredRegion) {
+    public static Account createAccount(SwiftService swiftService,
+                                        String url,
+                                        String username,
+                                        String password,
+                                        String tenantName,
+                                        String authMethod,
+                                        String preferredRegion) {
         if ("KEYSTONE".equals(authMethod.toUpperCase(Locale.getDefault()))) {
             return swiftService.swiftKeyStone(url, username, password, tenantName, preferredRegion);
         }
@@ -33,7 +38,6 @@ public class SwiftAccountFactory {
         }
 
         return swiftService.swiftBasic(url, username, password, preferredRegion);
-
     }
 
 }

@@ -62,8 +62,6 @@ public class SwiftRepository extends BlobStoreRepository {
 
     }
 
-
-
     // Base path for blobs
     private final BlobPath basePath;
 
@@ -88,35 +86,43 @@ public class SwiftRepository extends BlobStoreRepository {
      *            an elastic search ThreadPool
      */
     @Inject
-    public SwiftRepository(RepositoryMetaData metadata, Settings settings,
-                           NamedXContentRegistry namedXContentRegistry, SwiftService swiftService, ThreadPool threadPool) {
-        super(metadata, Swift.COMPRESS_SETTING.get(metadata.settings()), namedXContentRegistry, threadPool);
+    public SwiftRepository(final RepositoryMetaData metadata,
+                           final Settings settings,
+                           final NamedXContentRegistry namedXContentRegistry,
+                           final SwiftService swiftService,
+                           final ThreadPool threadPool) {
+        super(metadata, Swift.COMPRESS_SETTING.get(settings), namedXContentRegistry, threadPool);
         this.settings = settings;
         this.swiftService = swiftService;
-        this.chunkSize = Swift.CHUNK_SIZE_SETTING.get(metadata.settings());
+        this.chunkSize = Swift.CHUNK_SIZE_SETTING.get(settings);
         this.basePath = BlobPath.cleanPath();
     }
 
     @Override
-    protected BlobStore createBlobStore() throws Exception {
-        String username = Swift.USERNAME_SETTING.get(metadata.settings());
-        String password = Swift.PASSWORD_SETTING.get(metadata.settings());
-        String tenantName = Swift.TENANTNAME_SETTING.get(metadata.settings());
-        String authMethod = Swift.AUTHMETHOD_SETTING.get(metadata.settings());
-        String preferredRegion = Swift.PREFERRED_REGION_SETTING.get(metadata.settings());
+    protected BlobStore createBlobStore() {
+        String username = Swift.USERNAME_SETTING.get(settings);
+        String password = Swift.PASSWORD_SETTING.get(settings);
+        String tenantName = Swift.TENANTNAME_SETTING.get(settings);
+        String authMethod = Swift.AUTHMETHOD_SETTING.get(settings);
+        String preferredRegion = Swift.PREFERRED_REGION_SETTING.get(settings);
 
-        String container = Swift.CONTAINER_SETTING.get(metadata.settings());
+        String container = Swift.CONTAINER_SETTING.get(settings);
         if (container == null) {
             throw new RepositoryException(metadata.name(), "No container defined for swift repository");
         }
 
-        String url = Swift.URL_SETTING.get(metadata.settings());
+        String url = Swift.URL_SETTING.get(settings);
         if (url == null) {
             throw new RepositoryException(metadata.name(), "No url defined for swift repository");
         }
 
-        Account account = SwiftAccountFactory.createAccount(swiftService, url, username, password, tenantName,
-                authMethod, preferredRegion);
+        Account account = SwiftAccountFactory.createAccount(swiftService,
+                url,
+                username,
+                password,
+                tenantName,
+                authMethod,
+                preferredRegion);
 
         return new SwiftBlobStore(settings, account, container);
     }
