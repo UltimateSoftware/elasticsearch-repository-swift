@@ -37,6 +37,7 @@ import java.io.InputStream;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.FileAlreadyExistsException;
 import java.security.PrivilegedAction;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Map;
 
@@ -53,7 +54,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     private final boolean blobExistsCheckAllowed;
 
     // Max page size for list requests. This cannot be increased over 9999.
-    private final int maxPageSize = 9999;
+    private final int MAX_PAGE_SIZE = 9999;
 
     /**
      * Constructor
@@ -111,13 +112,28 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         }
     }
 
+    private Collection<StoredObject> listWithPagination(final String keyPath){
+        ArrayList<StoredObject> allObjects = new ArrayList<>();
+        String marker = null;
+        boolean moreToFetch;
+
+        do {
+            Collection<StoredObject> page = blobStore.getContainer().list(keyPath, marker, MAX_PAGE_SIZE);
+            allObjects.addAll(page);
+            moreToFetch = page.size() == MAX_PAGE_SIZE;
+            marker = allObjects.get(allObjects.size()-1).getName();
+        } while (moreToFetch);
+
+        return allObjects;
+    }
+
     @Override
     public DeleteResult delete() {
         return SwiftPerms.exec(() -> {
             DeleteResult result = DeleteResult.ZERO;
             Collection<StoredObject> containerObjects;
             do {
-                containerObjects = blobStore.getContainer().list(keyPath, "", maxPageSize);
+                containerObjects = listWithPagination(keyPath);
                 for (StoredObject so : containerObjects) {
                     try {
                         long size = so.getContentLength();
@@ -127,7 +143,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                         throw new RuntimeException(e);
                     }
                 }
-            } while (containerObjects.size() == maxPageSize);
+            } while (containerObjects.size() == MAX_PAGE_SIZE);
             return result;
         });
     }
@@ -147,7 +163,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             } else {
                 files = blobStore.getContainer().listDirectory(new Directory(keyPath, '/'));
             }
-            if (files != null && !files.isEmpty()) {
+            if (files != null) {
                 for (DirectoryOrObject object : files) {
                     if (object.isObject()) {
                         String name = object.getName().substring(keyPath.length());
@@ -173,7 +189,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             ImmutableMap.Builder<String, BlobContainer> blobsBuilder = ImmutableMap.builder();
             Collection<DirectoryOrObject> files;
             files = blobStore.getContainer().listDirectory(new Directory(keyPath, '/'));
-            if (files != null && !files.isEmpty()) {
+            if (files != null) {
                 for (DirectoryOrObject object : files) {
                     if (object.isDirectory()) {
                         blobsBuilder.put(object.getBareName(), blobStore.blobContainer(new BlobPath().add(object.getName())));
