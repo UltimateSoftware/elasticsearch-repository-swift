@@ -27,6 +27,7 @@ import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.repositories.RepositoryException;
 import org.elasticsearch.repositories.blobstore.BlobStoreRepository;
+import org.elasticsearch.threadpool.ThreadPool;
 import org.javaswift.joss.model.Account;
 import org.wikimedia.elasticsearch.swift.repositories.blobstore.SwiftBlobStore;
 
@@ -69,9 +70,6 @@ public class SwiftRepository extends BlobStoreRepository {
     // Chunk size.
     private final ByteSizeValue chunkSize;
 
-    // Are we compressing our snapshots?
-    private final boolean compress;
-
     protected final Settings settings;
     protected final SwiftService swiftService;
 
@@ -86,15 +84,16 @@ public class SwiftRepository extends BlobStoreRepository {
      *            an instance of NamedXContentRegistry
      * @param swiftService
      *            an instance of SwiftService
+     * @param threadPool
+     *            an elastic search ThreadPool
      */
     @Inject
     public SwiftRepository(RepositoryMetaData metadata, Settings settings,
-                           NamedXContentRegistry namedXContentRegistry, SwiftService swiftService) {
-        super(metadata, settings, namedXContentRegistry);
+                           NamedXContentRegistry namedXContentRegistry, SwiftService swiftService, ThreadPool threadPool) {
+        super(metadata, Swift.COMPRESS_SETTING.get(metadata.settings()), namedXContentRegistry, threadPool);
         this.settings = settings;
         this.swiftService = swiftService;
         this.chunkSize = Swift.CHUNK_SIZE_SETTING.get(metadata.settings());
-        this.compress = Swift.COMPRESS_SETTING.get(metadata.settings());
         this.basePath = BlobPath.cleanPath();
     }
 
@@ -126,7 +125,7 @@ public class SwiftRepository extends BlobStoreRepository {
      * Get the base blob path
      */
     @Override
-    protected BlobPath basePath() {
+    public BlobPath basePath() {
         return basePath;
     }
 
@@ -136,13 +135,5 @@ public class SwiftRepository extends BlobStoreRepository {
     @Override
     protected ByteSizeValue chunkSize() {
         return chunkSize;
-    }
-
-    /**
-     * Are we compressing our snapshots?
-     */
-    @Override
-    protected boolean isCompress() {
-        return compress;
     }
 }

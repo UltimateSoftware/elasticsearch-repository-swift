@@ -16,7 +16,6 @@
 
 package org.wikimedia.elasticsearch.swift.repositories.blobstore;
 
-import java.security.PrivilegedAction;
 import java.util.Collection;
 
 import org.elasticsearch.common.blobstore.BlobContainer;
@@ -25,11 +24,9 @@ import org.elasticsearch.common.blobstore.BlobStore;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
-import org.javaswift.joss.exception.CommandException;
 import org.javaswift.joss.model.Account;
 import org.javaswift.joss.model.Container;
 import org.javaswift.joss.model.DirectoryOrObject;
-import org.javaswift.joss.model.StoredObject;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
 
 /**
@@ -84,32 +81,6 @@ public class SwiftBlobStore implements BlobStore {
     @Override
     public BlobContainer blobContainer(BlobPath path) {
         return new SwiftBlobContainer(path, this);
-    }
-
-    /**
-     * Delete an arbitrary BlobPath from our store.
-     * @param path The blob path to delete
-     */
-    @Override
-    public void delete(final BlobPath path) {
-        try {
-            SwiftPerms.exec((PrivilegedAction<Void>) () -> {
-                String keyPath = path.buildAsString();
-                if (keyPath.isEmpty() || keyPath.endsWith("/")) {
-                    deleteByPrefix(keyPath.isEmpty() ? swift.listDirectory() : swift.listDirectory(keyPath, '/', "", 100));
-                } else {
-                    StoredObject obj = swift.getObject(keyPath);
-                    if (obj.exists()) {
-                        obj.delete();
-                    }
-                }
-                return null;
-            });
-        } catch (CommandException e) {
-            if (e.getMessage() != null)
-                throw e;
-            throw new CommandException(e.toString(), e);
-        }
     }
 
     private void deleteByPrefix(Collection<DirectoryOrObject> directoryOrObjects) {
