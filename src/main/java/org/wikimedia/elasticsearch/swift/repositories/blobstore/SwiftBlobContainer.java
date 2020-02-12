@@ -16,7 +16,6 @@
 
 package org.wikimedia.elasticsearch.swift.repositories.blobstore;
 
-import com.google.common.collect.ImmutableMap;
 import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.blobstore.BlobContainer;
 import org.elasticsearch.common.blobstore.BlobMetaData;
@@ -24,7 +23,9 @@ import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.blobstore.DeleteResult;
 import org.elasticsearch.common.blobstore.support.AbstractBlobContainer;
 import org.elasticsearch.common.blobstore.support.PlainBlobMetaData;
+import org.javaswift.joss.client.core.ContainerPaginationMap;
 import org.javaswift.joss.exception.NotFoundException;
+import org.javaswift.joss.model.Container;
 import org.javaswift.joss.model.Directory;
 import org.javaswift.joss.model.DirectoryOrObject;
 import org.javaswift.joss.model.StoredObject;
@@ -37,9 +38,11 @@ import java.io.InputStream;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.FileAlreadyExistsException;
 import java.security.PrivilegedAction;
-import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Swift's implementation of the AbstractBlobContainer
@@ -52,9 +55,6 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     protected final String keyPath;
 
     private final boolean blobExistsCheckAllowed;
-
-    // Max page size for list requests. This cannot be increased over 9999.
-    private final int MAX_PAGE_SIZE = 9999;
 
     /**
      * Constructor
@@ -112,40 +112,41 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         }
     }
 
-    private Collection<StoredObject> listWithPagination(final String keyPath){
-        ArrayList<StoredObject> allObjects = new ArrayList<>();
-        String marker = null;
-        boolean moreToFetch;
+    @Override
+    public DeleteResult delete() throws IOException {
+        Collection<StoredObject> containerObjects = SwiftPerms.exec(() -> {
+            Container container = blobStore.getContainer();
+            ContainerPaginationMap containerPaginationMap = new ContainerPaginationMap(container, keyPath, container.getMaxPageSize());
+            return containerPaginationMap.listAllItems();
+        });
 
-        do {
-            Collection<StoredObject> page = blobStore.getContainer().list(keyPath, marker, MAX_PAGE_SIZE);
-            allObjects.addAll(page);
-            moreToFetch = page.size() == MAX_PAGE_SIZE;
-            marker = allObjects.get(allObjects.size()-1).getName();
-        } while (moreToFetch);
+        Map<Boolean, List<Object>> deleteResults = containerObjects.stream().map(so -> {
+            try {
+                long size = SwiftPerms.exec(so::getContentLength);
+                deleteBlob(so.getName().substring(keyPath.length())); //SwiftPerms checked internally
+                return new DeleteResult(1, size);
+            } catch (Throwable e) {
+                return e;
+            }
+        }).collect(Collectors.partitioningBy(obj -> obj instanceof Throwable));
 
-        return allObjects;
+        if (deleteResults.get(true).isEmpty()) {
+            return deleteResults.get(false).stream()
+                .map(obj -> (DeleteResult)obj)
+                .reduce(DeleteResult.ZERO, DeleteResult::add);
+        }
+
+        String message = deleteResults.get(true).stream()
+            .map(obj -> ((Throwable)obj).getMessage())
+            .collect(Collectors.joining(","));
+
+        throw new IOException(message);
     }
 
-    @Override
-    public DeleteResult delete() {
-        return SwiftPerms.exec(() -> {
-            DeleteResult result = DeleteResult.ZERO;
-            Collection<StoredObject> containerObjects;
-            do {
-                containerObjects = listWithPagination(keyPath);
-                for (StoredObject so : containerObjects) {
-                    try {
-                        long size = so.getContentLength();
-                        deleteBlob(so.getName().substring(keyPath.length()));
-                        result = result.add(1, size);
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-            } while (containerObjects.size() == MAX_PAGE_SIZE);
-            return result;
-        });
+    private Object[] mapObjectMetadata(DirectoryOrObject object){
+        String name = object.getName().substring(keyPath.length());
+        PlainBlobMetaData meta = new PlainBlobMetaData(name, SwiftPerms.exec(() ->object.getAsObject().getContentLength()));
+        return new Object[]{name, meta};
     }
 
     /**
@@ -154,50 +155,37 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      * @return blobs metadata
      */
     @Override
-    public ImmutableMap<String, BlobMetaData> listBlobsByPrefix(@Nullable final String blobNamePrefix) {
-        return SwiftPerms.exec(() -> {
-            ImmutableMap.Builder<String, BlobMetaData> blobsBuilder = ImmutableMap.builder();
-            Collection<DirectoryOrObject> files;
-            if (blobNamePrefix != null) {
-                files = blobStore.getContainer().listDirectory(new Directory(buildKey(blobNamePrefix), '/'));
-            } else {
-                files = blobStore.getContainer().listDirectory(new Directory(keyPath, '/'));
-            }
-            if (files != null) {
-                for (DirectoryOrObject object : files) {
-                    if (object.isObject()) {
-                        String name = object.getName().substring(keyPath.length());
-                        blobsBuilder.put(name, new PlainBlobMetaData(name, object.getAsObject().getContentLength()));
-                    }
-                }
-            }
-            return blobsBuilder.build();
-        });
+    public Map<String, BlobMetaData> listBlobsByPrefix(@Nullable final String blobNamePrefix) {
+        String directoryKey = blobNamePrefix == null ? keyPath : buildKey(blobNamePrefix);
+
+        Map<String, BlobMetaData> blobs = SwiftPerms.exec(() -> blobStore.getContainer().listDirectory(new Directory(directoryKey, '/')))
+            .stream()
+            .filter(DirectoryOrObject::isObject)
+            .map(this::mapObjectMetadata)
+            .collect(Collectors.collectingAndThen(Collectors.toMap(pair -> (String)pair[0], pair -> (BlobMetaData)pair[1]),
+                                                  Collections::unmodifiableMap));
+
+        return blobs;
     }
 
     /**
      * Get all the blobs
      */
     @Override
-    public ImmutableMap<String, BlobMetaData> listBlobs() {
+    public Map<String, BlobMetaData> listBlobs() {
         return listBlobsByPrefix(null);
     }
 
     @Override
     public Map<String, BlobContainer> children() {
-        return SwiftPerms.exec(() -> {
-            ImmutableMap.Builder<String, BlobContainer> blobsBuilder = ImmutableMap.builder();
-            Collection<DirectoryOrObject> files;
-            files = blobStore.getContainer().listDirectory(new Directory(keyPath, '/'));
-            if (files != null) {
-                for (DirectoryOrObject object : files) {
-                    if (object.isDirectory()) {
-                        blobsBuilder.put(object.getBareName(), blobStore.blobContainer(new BlobPath().add(object.getName())));
-                    }
-                }
-            }
-            return blobsBuilder.build();
-        });
+        Map<String, BlobContainer> children = SwiftPerms.exec(() -> blobStore.getContainer().listDirectory(new Directory(keyPath, '/')))
+            .stream()
+            .filter(DirectoryOrObject::isDirectory)
+            .collect(Collectors.collectingAndThen(Collectors.toMap(DirectoryOrObject::getBareName,
+                                                                   object -> blobStore.blobContainer(new BlobPath().add(object.getName()))),
+                                                  Collections::unmodifiableMap));
+
+        return children;
     }
 
     /**

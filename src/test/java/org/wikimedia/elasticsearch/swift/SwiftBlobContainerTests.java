@@ -18,8 +18,10 @@ package org.wikimedia.elasticsearch.swift;
 import org.elasticsearch.common.blobstore.BlobContainer;
 import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.blobstore.BlobStore;
+import org.elasticsearch.common.blobstore.DeleteResult;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.repositories.ESBlobStoreContainerTestCase;
+import org.hamcrest.core.IsInstanceOf;
 import org.javaswift.joss.client.mock.AccountMock;
 import org.javaswift.joss.exception.NotFoundException;
 import org.javaswift.joss.swift.Swift;
@@ -32,7 +34,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.NoSuchFileException;
+import java.util.Collections;
 import java.util.Locale;
+import java.util.Map;
+
+import static org.hamcrest.Matchers.instanceOf;
 
 public class SwiftBlobContainerTests extends ESBlobStoreContainerTestCase {
     private Swift swift;
@@ -83,6 +89,24 @@ public class SwiftBlobContainerTests extends ESBlobStoreContainerTestCase {
                 container.writeBlob("blob", in, blobSize, true);
                 container.writeBlob("blob", in, blobSize, true);
             }
+        }
+    }
+
+    public void testDeleteReturnsDeleteResult() throws IOException {
+        try(BlobStore store = newBlobStore()) {
+            final BlobContainer container = store.blobContainer(new BlobPath().add("/path"));
+            DeleteResult result = container.delete();
+
+            assertNotNull(result);
+        }
+    }
+
+    public void testChildrenReturnsMap() throws IOException {
+        try(BlobStore store = newBlobStore()) {
+            final BlobContainer container = store.blobContainer(new BlobPath().add("/path"));
+            Map<String, BlobContainer> result = container.children();
+
+            assertNotNull(result);
         }
     }
 }
