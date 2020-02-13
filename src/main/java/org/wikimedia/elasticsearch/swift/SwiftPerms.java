@@ -30,7 +30,11 @@ public class SwiftPerms {
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(new SpecialPermission());
-            AccessController.doPrivileged((PrivilegedAction<Object>) () -> {runnable.run(); return null;});
+            AccessController.doPrivileged((PrivilegedAction<Object>) () -> {
+                runnable.run();
+                return null;
+            });
+            return;
         }
 
         runnable.run();
