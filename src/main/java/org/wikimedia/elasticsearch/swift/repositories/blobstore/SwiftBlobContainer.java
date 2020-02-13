@@ -38,10 +38,7 @@ import java.io.InputStream;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.FileAlreadyExistsException;
 import java.security.PrivilegedAction;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -68,9 +65,9 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         String keyPath = path.buildAsString();
         this.keyPath = keyPath.isEmpty() || keyPath.endsWith("/") ? keyPath : keyPath + "/";
 
-        this.blobExistsCheckAllowed = keyPath.isEmpty() ||
-            !blobStore.getSettings().getAsBoolean(SwiftRepository.Swift.MINIMIZE_BLOB_EXISTS_CHECKS_SETTING.getKey(),
-                                        true);
+        boolean minimizeBlobExistsChecks = blobStore.getSettings().getAsBoolean(SwiftRepository.Swift.MINIMIZE_BLOB_EXISTS_CHECKS_SETTING.getKey(),
+                                                                                true);
+        this.blobExistsCheckAllowed = keyPath.isEmpty() || !minimizeBlobExistsChecks;
     }
 
     /**
@@ -143,12 +140,6 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         throw new IOException(message);
     }
 
-    private Object[] mapObjectMetadata(DirectoryOrObject object){
-        String name = object.getName().substring(keyPath.length());
-        PlainBlobMetaData meta = new PlainBlobMetaData(name, SwiftPerms.exec(() ->object.getAsObject().getContentLength()));
-        return new Object[]{name, meta};
-    }
-
     /**
      * Get the blobs matching a given prefix
      * @param blobNamePrefix The prefix to look for blobs with
@@ -157,15 +148,19 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     @Override
     public Map<String, BlobMetaData> listBlobsByPrefix(@Nullable final String blobNamePrefix) {
         String directoryKey = blobNamePrefix == null ? keyPath : buildKey(blobNamePrefix);
+        Collection<DirectoryOrObject> directoryList = SwiftPerms.exec(() -> blobStore.getContainer().listDirectory(new Directory(directoryKey, '/')));
+        HashMap<String, PlainBlobMetaData> blobMap = new HashMap<>();
 
-        Map<String, BlobMetaData> blobs = SwiftPerms.exec(() -> blobStore.getContainer().listDirectory(new Directory(directoryKey, '/')))
-            .stream()
-            .filter(DirectoryOrObject::isObject)
-            .map(this::mapObjectMetadata)
-            .collect(Collectors.collectingAndThen(Collectors.toMap(pair -> (String)pair[0], pair -> (BlobMetaData)pair[1]),
-                                                  Collections::unmodifiableMap));
+        for (DirectoryOrObject obj: directoryList) {
+            if (obj.isObject()) {
+                String name = obj.getName().substring(keyPath.length());
+                Long length = SwiftPerms.exec(() -> obj.getAsObject().getContentLength());
+                PlainBlobMetaData meta = new PlainBlobMetaData(name, length);
+                blobMap.put(name, meta);
+            }
+        }
 
-        return blobs;
+        return Collections.unmodifiableMap(blobMap);
     }
 
     /**
@@ -178,14 +173,18 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
     @Override
     public Map<String, BlobContainer> children() {
-        Map<String, BlobContainer> children = SwiftPerms.exec(() -> blobStore.getContainer().listDirectory(new Directory(keyPath, '/')))
-            .stream()
-            .filter(DirectoryOrObject::isDirectory)
-            .collect(Collectors.collectingAndThen(Collectors.toMap(DirectoryOrObject::getBareName,
-                                                                   object -> blobStore.blobContainer(new BlobPath().add(object.getName()))),
-                                                  Collections::unmodifiableMap));
+        Collection<DirectoryOrObject> objects = SwiftPerms.exec(() -> blobStore.getContainer().listDirectory(new Directory(keyPath, '/')));
+        HashMap<String, BlobContainer> blobMap = new HashMap<>();
 
-        return children;
+        for (DirectoryOrObject obj: objects) {
+            if (obj.isDirectory()){
+                String name = obj.getBareName();
+                BlobContainer blobContainer = blobStore.blobContainer(new BlobPath().add(obj.getName()));
+                blobMap.put(name, blobContainer);
+            }
+        }
+
+        return Collections.unmodifiableMap(blobMap);
     }
 
     /**
