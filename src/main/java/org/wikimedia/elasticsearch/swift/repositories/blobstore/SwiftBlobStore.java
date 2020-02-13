@@ -24,6 +24,7 @@ import org.elasticsearch.common.blobstore.BlobStore;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
+import org.elasticsearch.threadpool.ThreadPool;
 import org.javaswift.joss.model.Account;
 import org.javaswift.joss.model.Container;
 import org.javaswift.joss.model.DirectoryOrObject;
@@ -42,14 +43,18 @@ public class SwiftBlobStore implements BlobStore {
 
     private final Settings settings;
     private final Account auth;
+    
+    private final ThreadPool threadPool;
 
     /**
      * Constructor. Sets up the container mostly.
+     * @param threadPool pool for async work
      * @param settings Settings for our repository. Only care about buffer size.
      * @param auth swift account info
      * @param containerName swift container
      */
-    public SwiftBlobStore(Settings settings, final Account auth, final String containerName) {
+    public SwiftBlobStore(Settings settings, final Account auth, final String containerName, ThreadPool threadPool) {
+        this.threadPool = threadPool;
         this.settings = settings;
         this.auth = auth;
         this.containerName = containerName;
@@ -95,7 +100,7 @@ public class SwiftBlobStore implements BlobStore {
      */
     @Override
     public BlobContainer blobContainer(BlobPath path) {
-        return new SwiftBlobContainer(path, this);
+        return new SwiftBlobContainer(path, this, threadPool);
     }
 
     //TODO method seems unused. Remove?

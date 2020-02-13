@@ -106,8 +106,8 @@ public class SwiftRepository extends BlobStoreRepository {
         String authMethod = Swift.AUTHMETHOD_SETTING.get(settings);
         String preferredRegion = Swift.PREFERRED_REGION_SETTING.get(settings);
 
-        String container = Swift.CONTAINER_SETTING.get(settings);
-        if (container == null) {
+        String containerName = Swift.CONTAINER_SETTING.get(settings);
+        if (containerName == null) {
             throw new RepositoryException(metadata.name(), "No container defined for swift repository");
         }
 
@@ -124,7 +124,7 @@ public class SwiftRepository extends BlobStoreRepository {
                 authMethod,
                 preferredRegion);
 
-        return new SwiftBlobStore(settings, account, container);
+        return new SwiftBlobStore(settings, account, containerName, threadPool());
     }
 
     /**

@@ -23,6 +23,7 @@ import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.blobstore.DeleteResult;
 import org.elasticsearch.common.blobstore.support.AbstractBlobContainer;
 import org.elasticsearch.common.blobstore.support.PlainBlobMetaData;
+import org.elasticsearch.threadpool.ThreadPool;
 import org.javaswift.joss.client.core.ContainerPaginationMap;
 import org.javaswift.joss.exception.NotFoundException;
 import org.javaswift.joss.model.Container;
@@ -55,15 +56,18 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     protected final String keyPath;
 
     private final boolean blobExistsCheckAllowed;
+    private final ThreadPool threadPool;
 
     /**
      * Constructor
      * @param path The BlobPath to find blobs in
      * @param blobStore The blob store to use for operations
+     * @param threadPool thread pool
      */
-    protected SwiftBlobContainer(BlobPath path, SwiftBlobStore blobStore) {
+    protected SwiftBlobContainer(BlobPath path, SwiftBlobStore blobStore, ThreadPool threadPool) {
         super(path);
         this.blobStore = blobStore;
+        this.threadPool = threadPool;
 
         String keyPath = path.buildAsString();
         this.keyPath = keyPath.isEmpty() || keyPath.endsWith("/") ? keyPath : keyPath + "/";
