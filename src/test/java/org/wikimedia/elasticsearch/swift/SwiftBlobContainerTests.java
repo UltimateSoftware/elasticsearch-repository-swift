@@ -21,7 +21,6 @@ import org.elasticsearch.common.blobstore.BlobStore;
 import org.elasticsearch.common.blobstore.DeleteResult;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.repositories.ESBlobStoreContainerTestCase;
-import org.hamcrest.core.IsInstanceOf;
 import org.javaswift.joss.client.mock.AccountMock;
 import org.javaswift.joss.exception.NotFoundException;
 import org.javaswift.joss.swift.Swift;
@@ -34,11 +33,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.NoSuchFileException;
-import java.util.Collections;
 import java.util.Locale;
 import java.util.Map;
-
-import static org.hamcrest.Matchers.instanceOf;
 
 public class SwiftBlobContainerTests extends ESBlobStoreContainerTestCase {
     private Swift swift;

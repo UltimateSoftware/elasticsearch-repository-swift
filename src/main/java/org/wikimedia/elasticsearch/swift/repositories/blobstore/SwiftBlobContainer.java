@@ -37,8 +37,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.FileAlreadyExistsException;
-import java.security.PrivilegedAction;
-import java.util.*;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -65,18 +68,10 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         String keyPath = path.buildAsString();
         this.keyPath = keyPath.isEmpty() || keyPath.endsWith("/") ? keyPath : keyPath + "/";
 
-        boolean minimizeBlobExistsChecks = blobStore.getSettings().getAsBoolean(SwiftRepository.Swift.MINIMIZE_BLOB_EXISTS_CHECKS_SETTING.getKey(),
-                                                                                true);
+        boolean minimizeBlobExistsChecks = blobStore.getSettings().getAsBoolean(
+                SwiftRepository.Swift.MINIMIZE_BLOB_EXISTS_CHECKS_SETTING.getKey(),
+                true);
         this.blobExistsCheckAllowed = keyPath.isEmpty() || !minimizeBlobExistsChecks;
-    }
-
-    /**
-     * Does a blob exist? Self-explanatory.
-     * @param blobName A blop to check for existence.
-     * @return true if exist
-     */
-    public boolean blobExists(final String blobName) {
-        return SwiftPerms.exec(() -> blobStore.getContainer().getObject(buildKey(blobName)).exists());
     }
 
     /**
@@ -85,27 +80,15 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      */
     @Override
     public void deleteBlob(final String blobName) throws IOException {
-        Throwable ex = SwiftPerms.exec(() -> {
-            try {
+        try {
+            SwiftPerms.exec(() -> {
                 StoredObject object = blobStore.getContainer().getObject(buildKey(blobName));
-                if (object == null) {
-                    return new NoSuchFileException(blobName, null, "Requested blob was not found");
-                }
                 object.delete();
-                return null;
-
-            } catch (NotFoundException e) {
-                return new NoSuchFileException(blobName, null, "Requested blob was not found");
-
-            } catch (Throwable e) {
-                return e;
-            }
-        });
-
-        if (ex instanceof IOException){
-            throw (IOException)ex;
-        } else if (ex != null){
-            throw new IOException("Requested blob was not deleted " + blobName, ex);
+            });
+        } catch (NotFoundException e) {
+            NoSuchFileException e2 = new NoSuchFileException("Blob [" + buildKey(blobName) + "] cannot be deleted");
+            e2.initCause(e);
+            throw e2;
         }
     }
 
@@ -146,28 +129,36 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      * @return blobs metadata
      */
     @Override
-    public Map<String, BlobMetaData> listBlobsByPrefix(@Nullable final String blobNamePrefix) {
+    public Map<String, BlobMetaData> listBlobsByPrefix(@Nullable final String blobNamePrefix) throws IOException {
         String directoryKey = blobNamePrefix == null ? keyPath : buildKey(blobNamePrefix);
-        Collection<DirectoryOrObject> directoryList = SwiftPerms.exec(() -> blobStore.getContainer().listDirectory(new Directory(directoryKey, '/')));
-        HashMap<String, PlainBlobMetaData> blobMap = new HashMap<>();
+        try {
+            Collection<DirectoryOrObject> directoryList = SwiftPerms.exec(() ->
+                blobStore.getContainer().listDirectory(new Directory(directoryKey, '/'))
+            );
+            HashMap<String, PlainBlobMetaData> blobMap = new HashMap<>();
 
-        for (DirectoryOrObject obj: directoryList) {
-            if (obj.isObject()) {
-                String name = obj.getName().substring(keyPath.length());
-                Long length = SwiftPerms.exec(() -> obj.getAsObject().getContentLength());
-                PlainBlobMetaData meta = new PlainBlobMetaData(name, length);
-                blobMap.put(name, meta);
+            for (DirectoryOrObject obj: directoryList) {
+                if (obj.isObject()) {
+                    String name = obj.getName().substring(keyPath.length());
+                    Long length = SwiftPerms.exec(() -> obj.getAsObject().getContentLength());
+                    PlainBlobMetaData meta = new PlainBlobMetaData(name, length);
+                    blobMap.put(name, meta);
+                }
             }
-        }
 
-        return Collections.unmodifiableMap(blobMap);
+            return Collections.unmodifiableMap(blobMap);
+        } catch (NotFoundException e) {
+            NoSuchFileException e2 = new NoSuchFileException("Cannot list blobs in directory [" + directoryKey + "]");
+            e2.initCause(e);
+            throw e2;
+        }
     }
 
     /**
      * Get all the blobs
      */
     @Override
-    public Map<String, BlobMetaData> listBlobs() {
+    public Map<String, BlobMetaData> listBlobs() throws IOException {
         return listBlobsByPrefix(null);
     }
 
@@ -192,7 +183,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      * @param blobName The blob name to build a key for
      * @return the key
      */
-    protected String buildKey(String blobName) {
+    private String buildKey(String blobName) {
         return keyPath + blobName;
     }
 
@@ -204,37 +195,46 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     @Override
     public InputStream readBlob(final String blobName) throws IOException {
         try {
-            final InputStream is = SwiftPerms.exec(
-                    (PrivilegedAction<InputStream>) () -> new BufferedInputStream(
-                            blobStore.getContainer().getObject(buildKey(blobName)).downloadObjectAsInputStream(),
-                            (int)blobStore.getBufferSizeInBytes()));
-
-            if (null == is) {
-                throw new NoSuchFileException("Blob object [" + blobName + "] not found.");
-            }
+            InputStream is = new BufferedInputStream(
+                SwiftPerms.exec(() -> blobStore.getContainer().getObject(buildKey(blobName)).downloadObjectAsInputStream()),
+                (int) blobStore.getBufferSizeInBytes());
 
             return is;
         } catch (NotFoundException e){
-            NoSuchFileException e2 = new NoSuchFileException("Blob object [" + blobName + "] not found.");
+            NoSuchFileException e2 = new NoSuchFileException("Blob object [" + buildKey(blobName) + "] cannot be read");
             e2.initCause(e);
             throw e2;
         }
     }
 
     @Override
-    public void writeBlob(final String blobName, final InputStream in, final long blobSize, boolean failIfAlreadyExists)
-                throws IOException {
-        if (failIfAlreadyExists && blobExistsCheckAllowed && blobExists(blobName)) {
-            throw new FileAlreadyExistsException("blob [" + blobName + "] already exists, cannot overwrite");
+    public void writeBlob(final String blobName,
+                          final InputStream in,
+                          final long blobSize,
+                          boolean failIfAlreadyExists) throws IOException {
+        try {
+            SwiftPerms.execThrows(() -> {
+                StoredObject blob = blobStore.getContainer().getObject(buildKey(blobName));
+
+                if (failIfAlreadyExists && blobExistsCheckAllowed && blob.exists()) {
+                    throw new FileAlreadyExistsException("blob [" + buildKey(blobName) + "] already exists, cannot overwrite");
+                }
+
+                blob.uploadObject(in);
+            });
+
+        } catch (IOException | RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException(e);
         }
-        SwiftPerms.exec(() -> {
-            blobStore.getContainer().getObject(buildKey(blobName)).uploadObject(in);
-            return null;
-        });
     }
 
     @Override
-    public void writeBlobAtomic(String blobName, InputStream inputStream, long blobSize, boolean failIfAlreadyExists) throws IOException {
+    public void writeBlobAtomic(String blobName,
+                                InputStream inputStream,
+                                long blobSize,
+                                boolean failIfAlreadyExists) throws IOException {
         writeBlob(blobName, inputStream, blobSize, failIfAlreadyExists);
     }
 }
