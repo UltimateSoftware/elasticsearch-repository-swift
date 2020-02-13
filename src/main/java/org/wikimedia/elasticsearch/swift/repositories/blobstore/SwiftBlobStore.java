@@ -37,9 +37,11 @@ public class SwiftBlobStore implements BlobStore {
     private final long bufferSizeInBytes;
 
     // Our Swift container. This is important.
-    private final Container container;
+    private final String containerName;
+    private Container container;
 
     private final Settings settings;
+    private final Account auth;
 
     /**
      * Constructor. Sets up the container mostly.
@@ -49,21 +51,34 @@ public class SwiftBlobStore implements BlobStore {
      */
     public SwiftBlobStore(Settings settings, final Account auth, final String containerName) {
         this.settings = settings;
+        this.auth = auth;
+        this.containerName = containerName;
         this.bufferSizeInBytes = settings.getAsBytesSize("buffer_size", new ByteSizeValue(100, ByteSizeUnit.KB)).getBytes();
-        this.container = SwiftPerms.exec(() -> {
-            Container container = auth.getContainer(containerName);
-            if (!container.exists()) {
-                container.create();
-                container.makePublic();
-            }
-            return container;
-        });
     }
 
     /**
+     * Initialize container lazily.
      * @return the container
      */
     public Container getContainer() {
+        if (container != null) {
+            return container;
+        }
+
+        synchronized (this){
+            if (container != null) {
+                return container;
+            }
+
+            SwiftPerms.exec(() -> {
+                container = auth.getContainer(containerName);
+                if (!container.exists()) {
+                    container.create();
+                    container.makePublic();
+                }
+            });
+        }
+
         return container;
     }
 
@@ -83,6 +98,7 @@ public class SwiftBlobStore implements BlobStore {
         return new SwiftBlobContainer(path, this);
     }
 
+    //TODO method seems unused. Remove?
     private void deleteByPrefix(Collection<DirectoryOrObject> directoryOrObjects) {
         for (DirectoryOrObject directoryOrObject : directoryOrObjects) {
             if (directoryOrObject.isObject()) {
