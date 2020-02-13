@@ -26,6 +26,16 @@ import org.elasticsearch.SpecialPermission;
  * https://github.com/javaswift/joss/pull/106 is merged
  */
 public class SwiftPerms {
+    public static void exec(final Runnable runnable) {
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(new SpecialPermission());
+            AccessController.doPrivileged((PrivilegedAction<Object>) () -> {runnable.run(); return null;});
+        }
+
+        runnable.run();
+    }
+
     public static <T> T exec(final PrivilegedAction<T> callable) {
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
