@@ -38,11 +38,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.FileAlreadyExistsException;
+import java.util.List;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
 /**
@@ -50,24 +53,26 @@ import java.util.stream.Collectors;
  */
 public class SwiftBlobContainer extends AbstractBlobContainer {
     // Our local swift blob store instance
-    protected final SwiftBlobStore blobStore;
+    private final SwiftBlobStore blobStore;
+    private final SwiftRepository repository;
 
     // The root path for blobs. Used by buildKey to build full blob names
-    protected final String keyPath;
+    private final String keyPath;
 
     private final boolean blobExistsCheckAllowed;
-    private final ThreadPool threadPool;
+
+    private final ExecutorService executor;
 
     /**
      * Constructor
-     * @param path The BlobPath to find blobs in
      * @param blobStore The blob store to use for operations
-     * @param threadPool thread pool
+     * @param path The BlobPath to find blobs in
      */
-    protected SwiftBlobContainer(BlobPath path, SwiftBlobStore blobStore, ThreadPool threadPool) {
+    protected SwiftBlobContainer(SwiftBlobStore blobStore, BlobPath path) {
         super(path);
         this.blobStore = blobStore;
-        this.threadPool = threadPool;
+        this.repository = blobStore.getRepository();
+        this.executor = repository != null ? repository.threadPool().executor(ThreadPool.Names.SNAPSHOT) : null;
 
         String keyPath = path.buildAsString();
         this.keyPath = keyPath.isEmpty() || keyPath.endsWith("/") ? keyPath : keyPath + "/";
@@ -84,10 +89,22 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      */
     @Override
     public void deleteBlob(final String blobName) throws IOException {
+        if (executor == null) {
+            internalDeleteBlob(blobName);
+            return;
+        }
+
+        Future<DeleteResult> task = executor.submit(() -> internalDeleteBlob(blobName));
+        repository.addDeletion(blobName, task);
+    }
+
+    private DeleteResult internalDeleteBlob(String blobName) throws NoSuchFileException {
         try {
-            SwiftPerms.exec(() -> {
+            return SwiftPerms.exec(() -> {
                 StoredObject object = blobStore.getContainer().getObject(buildKey(blobName));
+                long contentLength = object.getContentLength();
                 object.delete();
+                return new DeleteResult(1, contentLength);
             });
         } catch (NotFoundException e) {
             NoSuchFileException e2 = new NoSuchFileException("Blob [" + buildKey(blobName) + "] cannot be deleted");
@@ -98,6 +115,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
     @Override
     public DeleteResult delete() throws IOException {
+        //TODO deal with paralel streams
         Collection<StoredObject> containerObjects = SwiftPerms.exec(() -> {
             Container container = blobStore.getContainer();
             ContainerPaginationMap containerPaginationMap = new ContainerPaginationMap(container, keyPath, container.getMaxPageSize());

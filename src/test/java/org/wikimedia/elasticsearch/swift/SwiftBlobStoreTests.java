@@ -39,6 +39,6 @@ public class SwiftBlobStoreTests extends ESBlobStoreTestCase {
     @Override
     protected BlobStore newBlobStore() {
         String container = randomAlphaOfLength(randomIntBetween(1, 10)).toLowerCase(Locale.ROOT);
-        return new SwiftBlobStore(Settings.EMPTY, this.account, container, null);
+        return new SwiftBlobStore(null, Settings.EMPTY, this.account, container);
     }
 }

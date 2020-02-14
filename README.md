@@ -46,7 +46,9 @@ Plugin settings to be placed in elasticsearch YAML configuration. Keep defaults,
 |  Setting                            |   Description
 |-------------------------------------|------------------------------------------------------------
 | repository_swift.minimize_blob_exists_checks | true (default) or false. Reduces volume of SWIFT requests to check a blob's existence.
-| repository_swift..allow_caching     | true or false (default). Allow JOSS caching
+| repository_swift.allow_caching      | true or false (default). Allow JOSS caching
+| repository_swift.delete_timeout     | timeout of snapshot deletion in minutes (default 60 min)
+| repository_swift.snapshot_timeout   | timeout of taking a snapshot in minutes (default 360 min)
 
 ## To debug in Eclipse
 Since Swift has logging dependencies you have to be careful about debugging in Eclipse.

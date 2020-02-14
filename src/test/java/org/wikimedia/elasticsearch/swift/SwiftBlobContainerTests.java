@@ -51,7 +51,7 @@ public class SwiftBlobContainerTests extends ESBlobStoreContainerTestCase {
     @Override
     protected BlobStore newBlobStore() {
         String container = randomAlphaOfLength(randomIntBetween(1, 10)).toLowerCase(Locale.ROOT);
-        return new SwiftBlobStore(blobStoreSettings, this.account, container, null);
+        return new SwiftBlobStore(null, blobStoreSettings, this.account, container);
     }
 
     public void testCommandExceptionDuringRead() throws IOException {

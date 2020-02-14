@@ -18,17 +18,18 @@ package org.wikimedia.elasticsearch.swift.repositories.blobstore;
 
 import java.util.Collection;
 
+import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.blobstore.BlobContainer;
 import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.blobstore.BlobStore;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
-import org.elasticsearch.threadpool.ThreadPool;
 import org.javaswift.joss.model.Account;
 import org.javaswift.joss.model.Container;
 import org.javaswift.joss.model.DirectoryOrObject;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
+import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 
 /**
  * Our blob store
@@ -44,17 +45,17 @@ public class SwiftBlobStore implements BlobStore {
     private final Settings settings;
     private final Account auth;
     
-    private final ThreadPool threadPool;
+    private final SwiftRepository repository;
 
     /**
      * Constructor. Sets up the container mostly.
-     * @param threadPool pool for async work
+     * @param repository owning repository
      * @param settings Settings for our repository. Only care about buffer size.
      * @param auth swift account info
      * @param containerName swift container
      */
-    public SwiftBlobStore(Settings settings, final Account auth, final String containerName, ThreadPool threadPool) {
-        this.threadPool = threadPool;
+    public SwiftBlobStore(@Nullable SwiftRepository repository, Settings settings, final Account auth, final String containerName) {
+        this.repository = repository;
         this.settings = settings;
         this.auth = auth;
         this.containerName = containerName;
@@ -100,7 +101,7 @@ public class SwiftBlobStore implements BlobStore {
      */
     @Override
     public BlobContainer blobContainer(BlobPath path) {
-        return new SwiftBlobContainer(path, this, threadPool);
+        return new SwiftBlobContainer(this, path);
     }
 
     //TODO method seems unused. Remove?
@@ -121,7 +122,11 @@ public class SwiftBlobStore implements BlobStore {
     public void close() {
     }
 
-    protected Settings getSettings() {
+    public Settings getSettings() {
         return settings;
+    }
+
+    public SwiftRepository getRepository() {
+        return repository;
     }
 }
