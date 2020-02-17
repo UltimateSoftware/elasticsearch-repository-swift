@@ -23,8 +23,6 @@ import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.cluster.metadata.MetaData;
 import org.elasticsearch.cluster.metadata.RepositoryMetaData;
-import org.elasticsearch.cluster.node.DiscoveryNode;
-import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.blobstore.BlobStore;
 import org.elasticsearch.common.blobstore.DeleteResult;
@@ -155,7 +153,11 @@ public class SwiftRepository extends BlobStoreRepository {
         blobDeletionTasks.put(blobName, task);
     }
 
-    private void finalizeBlobDeletion(String operationId, @Nullable ActionListener<?> listener) {
+    //
+    // Intent of this method is to provide a wait that delays completion of potentially mutually exclusive operations
+    // in Elasticsearch
+    //
+    private void finalizeBlobDeletion(String operationId, ActionListener<?> listener) {
         final long timeLimit = System.nanoTime() + Swift.DELETE_TIMEOUT_MIN.get(settings) * 60 * 1_000_000_000;
         long failedCount = 0;
 
@@ -214,11 +216,6 @@ public class SwiftRepository extends BlobStoreRepository {
     public void endVerification(String seed) {
         super.endVerification(seed);
         finalizeBlobDeletion("verification", null);
-    }
-
-    @Override
-    public void verify(String seed, DiscoveryNode localNode) {
-        super.verify(seed, localNode);
     }
 
     @Override
