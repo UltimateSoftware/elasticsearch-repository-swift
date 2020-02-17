@@ -51,7 +51,11 @@ import org.wikimedia.elasticsearch.swift.repositories.blobstore.SwiftBlobStore;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.*;
+
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The blob store repository. A glorified settings wrapper.
@@ -167,7 +171,8 @@ public class SwiftRepository extends BlobStoreRepository {
             catch (TimeoutException e){
                 long notDoneCount = blobDeletionTasks.values().stream().filter(t -> !t.isDone()).count();
                 if (listener != null){
-                    listener.onFailure(new RepositoryException(metadata.name(), "failed to delete snapshot [" + operationId + "]: timed out, " + notDoneCount + " deletions in progress"));
+                    listener.onFailure(new RepositoryException(metadata.name(),
+                        "failed to delete snapshot [" + operationId + "]: timed out, " + notDoneCount + " deletions in progress"));
                 }
                 return; // Stop processing
             }
@@ -178,7 +183,8 @@ public class SwiftRepository extends BlobStoreRepository {
         }
 
         if (failedCount > 0 && listener != null){
-            listener.onFailure(new RepositoryException(metadata.name(), "failed to delete snapshot [" + operationId + "]: failed to delete " + failedCount + " blobs"));
+            listener.onFailure(new RepositoryException(metadata.name(),
+                "failed to delete snapshot [" + operationId + "]: failed to delete " + failedCount + " blobs"));
         }
     }
 

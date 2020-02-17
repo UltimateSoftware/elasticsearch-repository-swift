@@ -18,7 +18,6 @@ package org.wikimedia.elasticsearch.swift.repositories.blobstore;
 
 import java.util.Collection;
 
-import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.blobstore.BlobContainer;
 import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.blobstore.BlobStore;
@@ -54,7 +53,7 @@ public class SwiftBlobStore implements BlobStore {
      * @param auth swift account info
      * @param containerName swift container
      */
-    public SwiftBlobStore(@Nullable SwiftRepository repository, Settings settings, final Account auth, final String containerName) {
+    public SwiftBlobStore(SwiftRepository repository, Settings settings, final Account auth, final String containerName) {
         this.repository = repository;
         this.settings = settings;
         this.auth = auth;

@@ -38,11 +38,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.FileAlreadyExistsException;
-import java.util.List;
+
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.Map;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -115,33 +116,30 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
     @Override
     public DeleteResult delete() throws IOException {
-        //TODO deal with paralel streams
         Collection<StoredObject> containerObjects = SwiftPerms.exec(() -> {
             Container container = blobStore.getContainer();
             ContainerPaginationMap containerPaginationMap = new ContainerPaginationMap(container, keyPath, container.getMaxPageSize());
             return containerPaginationMap.listAllItems();
         });
 
-        Map<Boolean, List<Object>> deleteResults = containerObjects.stream().map(so -> {
+        DeleteResult results = DeleteResult.ZERO;
+        ArrayList<Exception> errors = new ArrayList<>();
+
+        for (StoredObject so: containerObjects) {
             try {
                 long size = SwiftPerms.exec(so::getContentLength);
                 deleteBlob(so.getName().substring(keyPath.length())); //SwiftPerms checked internally
-                return new DeleteResult(1, size);
-            } catch (Throwable e) {
-                return e;
+                results = results.add(1, size);
+            } catch (Exception e) {
+                errors.add(e);
             }
-        }).collect(Collectors.partitioningBy(obj -> obj instanceof Throwable));
-
-        if (deleteResults.get(true).isEmpty()) {
-            return deleteResults.get(false).stream()
-                .map(obj -> (DeleteResult)obj)
-                .reduce(DeleteResult.ZERO, DeleteResult::add);
         }
 
-        String message = deleteResults.get(true).stream()
-            .map(obj -> ((Throwable)obj).getMessage())
-            .collect(Collectors.joining(","));
+        if (errors.isEmpty()) {
+            return results;
+        }
 
+        String message = errors.stream().map(Exception::getMessage).collect(Collectors.joining(","));
         throw new IOException(message);
     }
 
