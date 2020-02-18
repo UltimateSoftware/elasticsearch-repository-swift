@@ -83,13 +83,21 @@ public class SwiftRepository extends BlobStoreRepository {
                                                                      true,
                                                                      Setting.Property.NodeScope);
 
-        Setting<Long> DELETE_TIMEOUT_MIN = Setting.longSetting("repository_swift.delete_timeout",
+        Setting<Long> DELETE_TIMEOUT_MIN = Setting.longSetting("repository_swift.delete_timeout_min",
                 60,
                 0,
                 Setting.Property.NodeScope);
 
-        Setting<Integer> SNAPSHOT_TIMEOUT_MIN = Setting.intSetting("repository_swift.snapshot_timeout",
+        Setting<Integer> SNAPSHOT_TIMEOUT_MIN = Setting.intSetting("repository_swift.snapshot_timeout_min",
                 360,
+                Setting.Property.NodeScope);
+
+        Setting<Integer> SHORT_OPERATION_TIMEOUT_S = Setting.intSetting("repository_swift.short_operation_timeout_s",
+                60,
+                Setting.Property.NodeScope);
+
+        Setting<Integer> RETRY_INTERVAL_S = Setting.intSetting("repository_swift.retry_interval_s",
+                10,
                 Setting.Property.NodeScope);
     }
 

@@ -78,10 +78,10 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         String keyPath = path.buildAsString();
         this.keyPath = keyPath.isEmpty() || keyPath.endsWith("/") ? keyPath : keyPath + "/";
 
-        boolean minimizeBlobExistsChecks = blobStore.getSettings().getAsBoolean(
-                SwiftRepository.Swift.MINIMIZE_BLOB_EXISTS_CHECKS_SETTING.getKey(),
-                true);
+        boolean minimizeBlobExistsChecks = SwiftRepository.Swift.MINIMIZE_BLOB_EXISTS_CHECKS_SETTING.get(blobStore.getSettings());
         this.blobExistsCheckAllowed = keyPath.isEmpty() || !minimizeBlobExistsChecks;
+        this.retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S.get(blobStore.getSettings());
+        this.shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S.get(blobStore.getSettings());
     }
 
     /**
