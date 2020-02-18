@@ -113,6 +113,7 @@ public class SwiftRepository extends BlobStoreRepository {
     private final SwiftService swiftService;
 
     private final ConcurrentHashMap<String, Future<DeleteResult>> blobDeletionTasks = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Future<Void>> blobWriteTasks = new ConcurrentHashMap<>();
 
     /**
      * Constructs new BlobStoreRepository
@@ -143,18 +144,20 @@ public class SwiftRepository extends BlobStoreRepository {
 
     @Override
     public void initializeSnapshot(SnapshotId snapshotId, List<IndexId> indices, MetaData clusterMetaData) {
+        initializeBlobTasks();
         super.initializeSnapshot(snapshotId, indices, clusterMetaData);
     }
 
     @Override
     public void deleteSnapshot(SnapshotId snapshotId, long repositoryStateId, ActionListener<Void> listener) {
-        initializeBlobDeletion();
+        initializeBlobTasks();
         super.deleteSnapshot(snapshotId, repositoryStateId, listener);
-        finalizeBlobDeletion(snapshotId.toString(), listener);
+        finalizeBlobTasks(snapshotId.toString(), listener);
     }
 
-    private void initializeBlobDeletion() {
+    private void initializeBlobTasks() {
         blobDeletionTasks.clear();
+        blobWriteTasks.clear();
     }
 
     public void addDeletion(String blobName, Future<DeleteResult> task) {
@@ -165,8 +168,7 @@ public class SwiftRepository extends BlobStoreRepository {
     // Intent of this method is to provide a wait that delays completion of potentially mutually exclusive operations
     // in Elasticsearch
     //
-    private void finalizeBlobDeletion(String operationId, ActionListener<?> listener) {
-        final long timeLimit = System.nanoTime() + Swift.DELETE_TIMEOUT_MIN.get(settings) * 60 * 1_000_000_000;
+    private void finalizeBlobDeletion(String operationId, ActionListener<?> listener, final long timeLimit) {
         long failedCount = 0;
 
         for (Map.Entry<String, Future<DeleteResult>> entry: blobDeletionTasks.entrySet()) {
@@ -198,11 +200,60 @@ public class SwiftRepository extends BlobStoreRepository {
         }
     }
 
+    private void finalizeBlobTasks(String operationId, ActionListener<?> listener) {
+        long now = System.nanoTime();
+        final long deleteTimeLimit = now + TimeUnit.NANOSECONDS.convert(Swift.DELETE_TIMEOUT_MIN.get(settings), TimeUnit.MINUTES);
+        final long snapshotTimeLimit = now + TimeUnit.NANOSECONDS.convert(Swift.SNAPSHOT_TIMEOUT_MIN.get(settings), TimeUnit.MINUTES);
+
+        finalizeBlobWrite(operationId, listener, snapshotTimeLimit);
+        finalizeBlobDeletion(operationId, listener, deleteTimeLimit);
+    }
+
+    public void addWrite(String blobName, Future<Void> task) {
+        blobWriteTasks.put(blobName, task);
+    }
+
+    //
+    // Intent of this method is to provide a wait that delays completion of potentially mutually exclusive operations
+    // in Elasticsearch
+    //
+    private void finalizeBlobWrite(String operationId, ActionListener<?> listener, final long timeLimit) {
+        long failedCount = 0;
+
+        for (Map.Entry<String, Future<Void>> entry: blobWriteTasks.entrySet()) {
+            try {
+                long remaining_ns = timeLimit - System.nanoTime();
+                if (remaining_ns < 0) {
+                    throw new TimeoutException();
+                }
+
+                entry.getValue().get(remaining_ns, TimeUnit.NANOSECONDS);
+            }
+            catch (TimeoutException e){
+                long notDoneCount = blobWriteTasks.values().stream().filter(t -> !t.isDone()).count();
+                if (listener != null){
+                    listener.onFailure(new RepositoryException(metadata.name(),
+                            "failed to complete writes [" + operationId + "]: timed out, " + notDoneCount + " writes in progress"));
+                }
+                return; // Stop processing
+            }
+            catch (Exception e) {
+                logger.warn("failed to complete writes [" + entry.getKey() + "]", e);
+                failedCount++;
+            }
+        }
+
+        if (failedCount > 0 && listener != null){
+            listener.onFailure(new RepositoryException(metadata.name(),
+                    "failed to complete snapshot [" + operationId + "]: failed to write " + failedCount + " blobs"));
+        }
+    }
+
     @Override
     public void cleanup(long repositoryStateId, ActionListener<RepositoryCleanupResult> listener) {
-        initializeBlobDeletion();
+        initializeBlobTasks();
         super.cleanup(repositoryStateId, listener);
-        finalizeBlobDeletion(String.valueOf(repositoryStateId), listener);
+        finalizeBlobTasks(String.valueOf(repositoryStateId), listener);
     }
 
     @Override
@@ -212,18 +263,19 @@ public class SwiftRepository extends BlobStoreRepository {
                                  ActionListener<SnapshotInfo> listener) {
         super.finalizeSnapshot(snapshotId, indices, startTime, failure, totalShards, shardFailures, repositoryStateId,
                 includeGlobalState, clusterMetaData, userMetadata, listener);
+        finalizeBlobTasks(snapshotId.toString(), listener);
     }
 
     @Override
     public String startVerification() {
-        initializeBlobDeletion();
+        initializeBlobTasks();
         return super.startVerification();
     }
 
     @Override
     public void endVerification(String seed) {
         super.endVerification(seed);
-        finalizeBlobDeletion("verification", null);
+        finalizeBlobTasks("verification", null);
     }
 
     @Override
