@@ -16,6 +16,8 @@
 
 package org.wikimedia.elasticsearch.swift.repositories.blobstore;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.blobstore.BlobContainer;
 import org.elasticsearch.common.blobstore.BlobMetaData;
@@ -31,6 +33,7 @@ import org.javaswift.joss.model.Directory;
 import org.javaswift.joss.model.DirectoryOrObject;
 import org.javaswift.joss.model.StoredObject;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
+import org.wikimedia.elasticsearch.swift.WithTimeout;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 
 import java.io.BufferedInputStream;
@@ -45,14 +48,19 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
  * Swift's implementation of the AbstractBlobContainer
  */
 public class SwiftBlobContainer extends AbstractBlobContainer {
+    private static final Logger logger = LogManager.getLogger(SwiftBlobContainer.class);
+
     // Our local swift blob store instance
     private final SwiftBlobStore blobStore;
     private final SwiftRepository repository;
@@ -61,6 +69,8 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     private final String keyPath;
 
     private final boolean blobExistsCheckAllowed;
+    private final int retryIntervalS;
+    private final int shortOperationTimeoutS;
 
     private final ExecutorService executor;
 
@@ -91,27 +101,34 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     @Override
     public void deleteBlob(final String blobName) throws IOException {
         if (executor == null) {
-            internalDeleteBlob(blobName);
-            return;
+            try {
+                internalDeleteBlob(blobName);
+                return;
+            }
+            catch (Exception e) {
+                throw new IOException(e);
+            }
         }
 
         Future<DeleteResult> task = executor.submit(() -> internalDeleteBlob(blobName));
         repository.addDeletion(blobName, task);
     }
 
-    private DeleteResult internalDeleteBlob(String blobName) throws NoSuchFileException {
-        try {
-            return SwiftPerms.exec(() -> {
-                StoredObject object = blobStore.getContainer().getObject(buildKey(blobName));
-                long contentLength = object.getContentLength();
-                object.delete();
-                return new DeleteResult(1, contentLength);
-            });
-        } catch (NotFoundException e) {
-            NoSuchFileException e2 = new NoSuchFileException("Blob [" + buildKey(blobName) + "] cannot be deleted");
-            e2.initCause(e);
-            throw e2;
-        }
+    private DeleteResult internalDeleteBlob(String blobName) throws InterruptedException, ExecutionException, TimeoutException {
+        return WithTimeout.retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
+            try {
+                return SwiftPerms.exec(() -> {
+                    StoredObject object = blobStore.getContainer().getObject(buildKey(blobName));
+                    long contentLength = object.getContentLength();
+                    object.delete();
+                    return new DeleteResult(1, contentLength);
+                });
+            }
+            catch (NotFoundException e) {
+                logger.warn("Blob [" + buildKey(blobName) + "] cannot be deleted", e);
+                throw e;
+            }
+        });
     }
 
     @Override
@@ -215,15 +232,21 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     @Override
     public InputStream readBlob(final String blobName) throws IOException {
         try {
-            InputStream is = new BufferedInputStream(
-                SwiftPerms.exec(() -> blobStore.getContainer().getObject(buildKey(blobName)).downloadObjectAsInputStream()),
-                (int) blobStore.getBufferSizeInBytes());
-
-            return is;
-        } catch (NotFoundException e){
-            NoSuchFileException e2 = new NoSuchFileException("Blob object [" + buildKey(blobName) + "] cannot be read");
-            e2.initCause(e);
-            throw e2;
+            return WithTimeout.retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
+                try {
+                    InputStream downloadStream = SwiftPerms.exec(() ->
+                        blobStore.getContainer().getObject(buildKey(blobName)).downloadObjectAsInputStream()
+                    );
+                    return new BufferedInputStream(downloadStream, (int) blobStore.getBufferSizeInBytes());
+                }
+                catch (NotFoundException e) {
+                    logger.warn("Blob object [" + buildKey(blobName) + "] cannot be read", e);
+                    throw e;
+                }
+            });
+        }
+        catch(Exception e) {
+            throw new IOException(e);
         }
     }
 
@@ -232,6 +255,20 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                           final InputStream in,
                           final long blobSize,
                           boolean failIfAlreadyExists) throws IOException {
+        if (executor == null) {
+            internalWriteBlob(blobName, in, failIfAlreadyExists);
+            return;
+        }
+
+        Future<Void> task = executor.submit(() -> {
+            internalWriteBlob(blobName, in, failIfAlreadyExists);
+            return null;
+        });
+
+        repository.addWrite(blobName, task);
+    }
+
+    private void internalWriteBlob(String blobName, InputStream in, boolean failIfAlreadyExists) throws IOException {
         try {
             SwiftPerms.execThrows(() -> {
                 StoredObject blob = blobStore.getContainer().getObject(buildKey(blobName));
@@ -243,9 +280,11 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                 blob.uploadObject(in);
             });
 
-        } catch (IOException | RuntimeException e) {
+        }
+        catch (IOException | RuntimeException e) {
             throw e;
-        } catch (Exception e) {
+        }
+        catch (Exception e) {
             throw new IOException(e);
         }
     }
