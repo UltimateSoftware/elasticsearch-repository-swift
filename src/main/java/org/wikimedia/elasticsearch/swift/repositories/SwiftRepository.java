@@ -93,7 +93,7 @@ public class SwiftRepository extends BlobStoreRepository {
                 Setting.Property.NodeScope);
 
         Setting<Integer> SHORT_OPERATION_TIMEOUT_S = Setting.intSetting("repository_swift.short_operation_timeout_s",
-                60,
+                30,
                 Setting.Property.NodeScope);
 
         Setting<Integer> RETRY_INTERVAL_S = Setting.intSetting("repository_swift.retry_interval_s",
