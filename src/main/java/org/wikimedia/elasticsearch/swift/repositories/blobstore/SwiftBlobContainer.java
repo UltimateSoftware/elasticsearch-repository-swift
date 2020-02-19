@@ -127,7 +127,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             }
             catch (NotFoundException e) {
                 String message = "Blob [" + buildKey(blobName) + "] cannot be deleted";
-                logger.warn(message, e);
+                logger.warn(message);
                 NoSuchFileException e2 = new NoSuchFileException(message);
                 e2.initCause(e);
                 throw e2;
@@ -245,7 +245,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                 }
                 catch (NotFoundException e) {
                     String message = "Blob object [" + buildKey(blobName) + "] cannot be read";
-                    logger.warn(message, e);
+                    logger.warn(message);
                     NoSuchFileException e2 = new NoSuchFileException(message);
                     e2.initCause(e);
                     throw e2;
