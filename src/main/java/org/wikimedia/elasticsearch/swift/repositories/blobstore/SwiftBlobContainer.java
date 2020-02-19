@@ -99,6 +99,11 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      */
     @Override
     public void deleteBlob(final String blobName) throws IOException {
+        if (blobName.startsWith("tests-") && keyPath.isEmpty()){
+            logger.info("ignoring deletion of pseudo-folder [" + blobName + "]");
+            return;
+        }
+
         if (executor == null) {
             try {
                 internalDeleteBlob(blobName);
