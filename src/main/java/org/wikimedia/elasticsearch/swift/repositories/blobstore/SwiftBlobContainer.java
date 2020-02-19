@@ -37,6 +37,7 @@ import org.wikimedia.elasticsearch.swift.WithTimeout;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 
 import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.NoSuchFileException;
@@ -265,20 +266,33 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                           final InputStream in,
                           final long blobSize,
                           boolean failIfAlreadyExists) throws IOException {
+        byte[] bytes = readAllBytes(in);
         if (executor == null) {
-            internalWriteBlob(blobName, in, failIfAlreadyExists);
+            internalWriteBlob(blobName, bytes, failIfAlreadyExists);
             return;
         }
 
         Future<Void> task = executor.submit(() -> {
-            internalWriteBlob(blobName, in, failIfAlreadyExists);
+            internalWriteBlob(blobName, bytes, failIfAlreadyExists);
             return null;
         });
 
         repository.addWrite(blobName, task);
     }
 
-    private void internalWriteBlob(String blobName, InputStream in, boolean failIfAlreadyExists) throws IOException {
+    private byte[] readAllBytes(InputStream in) throws IOException {
+        final byte[] buffer = new byte[1024];
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(buffer.length);
+        int read;
+
+        while ((read = in.read(buffer)) != -1) {
+            baos.write(buffer, 0, read);
+        }
+
+        return baos.toByteArray();
+    }
+
+    private void internalWriteBlob(String blobName, byte[] bytes, boolean failIfAlreadyExists) throws IOException {
         try {
             SwiftPerms.execThrows(() -> {
                 StoredObject blob = blobStore.getContainer().getObject(buildKey(blobName));
@@ -287,7 +301,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                     throw new FileAlreadyExistsException("blob [" + buildKey(blobName) + "] already exists, cannot overwrite");
                 }
 
-                blob.uploadObject(in);
+                blob.uploadObject(bytes);
             });
 
         }
