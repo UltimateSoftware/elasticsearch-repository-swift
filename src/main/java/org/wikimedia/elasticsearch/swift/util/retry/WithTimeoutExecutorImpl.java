@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-package org.wikimedia.elasticsearch.swift;
-
-import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
+package org.wikimedia.elasticsearch.swift.util.retry;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -26,30 +24,23 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 
-public class WithTimeout {
+class WithTimeoutExecutorImpl implements WithTimeout {
     private final ExecutorService executorService;
 
-    public WithTimeout(SwiftRepository repository) {
-        executorService = repository != null ? repository.threadPool().generic() : null;
+    WithTimeoutExecutorImpl(ExecutorService executorService) {
+        this.executorService = executorService;
     }
 
-    public <T> T retry(long interval, long timeout, TimeUnit timeUnit, Callable<T> callable) throws Exception {
-        if (executorService == null){
-            return callable.call();
-        }
-
+    @Override
+    public <T> T retry(long interval, long timeout, TimeUnit timeUnit, Callable<T> callable) throws InterruptedException, ExecutionException, TimeoutException {
         Future<T> task = executorService.submit(() -> internalRetry(interval, timeout, timeUnit, callable));
         T result = task.get(timeout, timeUnit);
         return result;
     }
 
+    @Override
     public void retry(long interval, long timeout, TimeUnit timeUnit, Runnable runnable)
             throws InterruptedException, ExecutionException, TimeoutException {
-        if (executorService == null){
-            runnable.run();
-            return;
-        }
-
         Future<Void> task = executorService.submit(() -> internalRetry(interval, timeout, timeUnit, () -> {runnable.run();
                                                                                                            return null;}));
         task.get(timeout, timeUnit);

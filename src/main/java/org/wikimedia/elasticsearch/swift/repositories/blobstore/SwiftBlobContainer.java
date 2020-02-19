@@ -33,7 +33,7 @@ import org.javaswift.joss.model.Directory;
 import org.javaswift.joss.model.DirectoryOrObject;
 import org.javaswift.joss.model.StoredObject;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
-import org.wikimedia.elasticsearch.swift.WithTimeout;
+import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 
 import java.io.BufferedInputStream;
@@ -72,6 +72,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     private final int shortOperationTimeoutS;
 
     private final ExecutorService executor;
+    private final WithTimeout.Factory withTimeoutFactory;
 
     /**
      * Constructor
@@ -83,6 +84,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         this.blobStore = blobStore;
         this.repository = blobStore.getRepository();
         this.executor = repository != null ? repository.threadPool().executor(ThreadPool.Names.SNAPSHOT) : null;
+        this.withTimeoutFactory = new WithTimeout.Factory();
 
         String keyPath = path.buildAsString();
         this.keyPath = keyPath.isEmpty() || keyPath.endsWith("/") ? keyPath : keyPath + "/";
@@ -91,6 +93,10 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         this.blobExistsCheckAllowed = keyPath.isEmpty() || !minimizeBlobExistsChecks;
         this.retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S.get(blobStore.getSettings());
         this.shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S.get(blobStore.getSettings());
+    }
+
+    private WithTimeout withTimeout() {
+        return withTimeoutFactory.from(repository);
     }
 
     /**
@@ -122,7 +128,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     }
 
     private DeleteResult internalDeleteBlob(String blobName) throws Exception {
-        return new WithTimeout(repository).retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
+        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
             try {
                 return SwiftPerms.exec(() -> {
                     StoredObject object = blobStore.getContainer().getObject(buildKey(blobName));
@@ -242,7 +248,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     @Override
     public InputStream readBlob(final String blobName) throws IOException {
         try {
-            return new WithTimeout(repository).retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
+            return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
                 try {
                     InputStream downloadStream = SwiftPerms.exec(() ->
                         blobStore.getContainer().getObject(buildKey(blobName)).downloadObjectAsInputStream()
