@@ -19,6 +19,9 @@ package org.wikimedia.elasticsearch.swift.util.retry;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
+//
+// This is a non-retry implementation
+//
 class WithTimeoutDirectImpl implements WithTimeout {
     @Override
     public <T> T retry(long interval, long timeout, TimeUnit timeUnit, Callable<T> callable) throws Exception {

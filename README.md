@@ -47,6 +47,7 @@ Plugin settings to be placed in elasticsearch YAML configuration. Keep defaults,
 |----------------------------------------------|------------------------------------------------------------
 | repository_swift.minimize_blob_exists_checks | true (default) or false. Reduces volume of SWIFT requests to check a blob's existence.
 | repository_swift.allow_caching               | true or false (default). Allow JOSS caching
+| repository_swift.allow_concurrent_io         | true (default) or false. Allow concurrent writes and deletes.
 | repository_swift.delete_timeout_min          | timeout of snapshot deletion in minutes (default 60 min)
 | repository_swift.snapshot_timeout_min        | timeout of taking a snapshot in minutes (default 360 min)
 | repository_swift.short_operation_timeout_s   | timeout for short operations (like writing a small blob, deleting, or listing) in seconds (default 30 s)

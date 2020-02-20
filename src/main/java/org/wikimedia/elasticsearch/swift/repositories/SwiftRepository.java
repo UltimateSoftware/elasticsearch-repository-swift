@@ -83,21 +83,25 @@ public class SwiftRepository extends BlobStoreRepository {
                                                                      true,
                                                                      Setting.Property.NodeScope);
 
-        Setting<Long> DELETE_TIMEOUT_MIN = Setting.longSetting("repository_swift.delete_timeout_min",
+        Setting<Long> DELETE_TIMEOUT_MIN_SETTING = Setting.longSetting("repository_swift.delete_timeout_min",
                 60,
                 0,
                 Setting.Property.NodeScope);
 
-        Setting<Integer> SNAPSHOT_TIMEOUT_MIN = Setting.intSetting("repository_swift.snapshot_timeout_min",
+        Setting<Integer> SNAPSHOT_TIMEOUT_MIN_SETTING = Setting.intSetting("repository_swift.snapshot_timeout_min",
                 360,
                 Setting.Property.NodeScope);
 
-        Setting<Integer> SHORT_OPERATION_TIMEOUT_S = Setting.intSetting("repository_swift.short_operation_timeout_s",
+        Setting<Integer> SHORT_OPERATION_TIMEOUT_S_SETTING = Setting.intSetting("repository_swift.short_operation_timeout_s",
                 30,
                 Setting.Property.NodeScope);
 
-        Setting<Integer> RETRY_INTERVAL_S = Setting.intSetting("repository_swift.retry_interval_s",
+        Setting<Integer> RETRY_INTERVAL_S_SETTING = Setting.intSetting("repository_swift.retry_interval_s",
                 10,
+                Setting.Property.NodeScope);
+
+        Setting<Boolean> ALLOW_CONCURRENT_IO_SETTING = Setting.boolSetting("repository_swift.allow_concurrent_io",
+                true,
                 Setting.Property.NodeScope);
     }
 
@@ -110,6 +114,16 @@ public class SwiftRepository extends BlobStoreRepository {
     private final ByteSizeValue chunkSize;
 
     private final Settings settings;
+
+    private final Settings envSettings;
+
+    public Settings getSettings() {
+        return settings;
+    }
+
+    public Settings getEnvSettings() {
+        return envSettings;
+    }
     private final SwiftService swiftService;
 
     private final ConcurrentHashMap<String, Future<DeleteResult>> blobDeletionTasks = new ConcurrentHashMap<>();
@@ -121,6 +135,8 @@ public class SwiftRepository extends BlobStoreRepository {
      * @param metadata
      *            repository meta data
      * @param settings
+     *            repo settings
+     * @param envSettings
      *            global settings
      * @param namedXContentRegistry
      *            an instance of NamedXContentRegistry
@@ -132,11 +148,13 @@ public class SwiftRepository extends BlobStoreRepository {
     @Inject
     public SwiftRepository(final RepositoryMetaData metadata,
                            final Settings settings,
+                           final Settings envSettings,
                            final NamedXContentRegistry namedXContentRegistry,
                            final SwiftService swiftService,
                            final ThreadPool threadPool) {
         super(metadata, Swift.COMPRESS_SETTING.get(settings), namedXContentRegistry, threadPool);
         this.settings = settings;
+        this.envSettings = envSettings;
         this.swiftService = swiftService;
         this.chunkSize = Swift.CHUNK_SIZE_SETTING.get(settings);
         this.basePath = BlobPath.cleanPath();
@@ -202,8 +220,10 @@ public class SwiftRepository extends BlobStoreRepository {
 
     private void finalizeBlobTasks(String operationId, ActionListener<?> listener) {
         long now = System.nanoTime();
-        final long deleteTimeLimit = now + TimeUnit.NANOSECONDS.convert(Swift.DELETE_TIMEOUT_MIN.get(settings), TimeUnit.MINUTES);
-        final long snapshotTimeLimit = now + TimeUnit.NANOSECONDS.convert(Swift.SNAPSHOT_TIMEOUT_MIN.get(settings), TimeUnit.MINUTES);
+        final long deleteTimeLimit = now + TimeUnit.NANOSECONDS.convert(Swift.DELETE_TIMEOUT_MIN_SETTING.get(envSettings),
+                                                                        TimeUnit.MINUTES);
+        final long snapshotTimeLimit = now + TimeUnit.NANOSECONDS.convert(Swift.SNAPSHOT_TIMEOUT_MIN_SETTING.get(envSettings),
+                                                                          TimeUnit.MINUTES);
 
         finalizeBlobWrite(operationId, listener, snapshotTimeLimit);
         finalizeBlobDeletion(operationId, listener, deleteTimeLimit);
@@ -315,7 +335,7 @@ public class SwiftRepository extends BlobStoreRepository {
                 authMethod,
                 preferredRegion);
 
-        return new SwiftBlobStore(this, settings, account, containerName);
+        return new SwiftBlobStore(this, settings, envSettings, account, containerName);
     }
 
     /**

@@ -45,27 +45,28 @@ public class SwiftService extends AbstractLifecycleComponent {
 
     private final int retryIntervalS;
     private final int shortOperationTimeoutS;
+    private final Settings envSettings;
 
     /**
      * Constructor
      * 
-     * @param settings
+     * @param envSettings
      *            Settings for our repository. Injected.
      *
      * @param threadPool for retry()
      */
     @Inject
-    public SwiftService(Settings settings, ThreadPool threadPool) {
-        allowCaching = settings.getAsBoolean(SwiftRepository.Swift.ALLOW_CACHING_SETTING.getKey(),
-                                 true);
+    public SwiftService(Settings envSettings, ThreadPool threadPool) {
+        this.envSettings = envSettings;
         this.threadPool = threadPool;
+        allowCaching = SwiftRepository.Swift.ALLOW_CACHING_SETTING.get(envSettings);
         withTimeoutFactory = new WithTimeout.Factory();
-        retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S.get(settings);
-        shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S.get(settings);
+        retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
+        shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
     }
 
     private WithTimeout withTimeout() {
-        return withTimeoutFactory.from(threadPool);
+        return withTimeoutFactory.from(envSettings, threadPool);
     }
 
     /**

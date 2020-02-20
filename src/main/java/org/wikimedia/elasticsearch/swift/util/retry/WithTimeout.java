@@ -16,31 +16,29 @@
 
 package org.wikimedia.elasticsearch.swift.util.retry;
 
+import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 public interface WithTimeout {
     <T> T retry(long interval, long timeout, TimeUnit timeUnit, Callable<T> callable) throws Exception;
 
-    void retry(long interval, long timeout, TimeUnit timeUnit, Runnable runnable)
-            throws InterruptedException, ExecutionException, TimeoutException;
+    void retry(long interval, long timeout, TimeUnit timeUnit, Runnable runnable) throws Exception;
 
     class Factory {
         public WithTimeout from(SwiftRepository repository){
-            if (repository == null){
+            if (repository == null || !SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(repository.getEnvSettings())){
                 return new WithTimeoutDirectImpl();
             }
 
             return new WithTimeoutExecutorImpl(repository.threadPool().generic());
         }
 
-        public WithTimeout from(ThreadPool threadPool){
-            if (threadPool == null){
+        public WithTimeout from(Settings envSettings, ThreadPool threadPool){
+            if (threadPool == null || !SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(envSettings)){
                 return new WithTimeoutDirectImpl();
             }
 

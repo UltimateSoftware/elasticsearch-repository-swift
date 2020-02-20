@@ -45,6 +45,12 @@ public class SwiftBlobStore implements BlobStore {
 
     // Our Swift container. This is important.
     private final String containerName;
+
+    private final Settings envSettings;
+    public Settings getEnvSettings() {
+        return envSettings;
+    }
+
     private Container container;
 
     private final Settings settings;
@@ -60,18 +66,24 @@ public class SwiftBlobStore implements BlobStore {
      * Constructor. Sets up the container mostly.
      * @param repository owning repository
      * @param settings Settings for our repository. Only care about buffer size.
+     * @param envSettings global settings
      * @param auth swift account info
      * @param containerName swift container
      */
-    public SwiftBlobStore(SwiftRepository repository, Settings settings, final Account auth, final String containerName) {
+    public SwiftBlobStore(SwiftRepository repository,
+                          Settings settings,
+                          Settings envSettings,
+                          final Account auth,
+                          final String containerName) {
         this.repository = repository;
         this.settings = settings;
+        this.envSettings = envSettings;
         this.auth = auth;
         this.containerName = containerName;
         bufferSizeInBytes = settings.getAsBytesSize("buffer_size", new ByteSizeValue(100, ByteSizeUnit.KB)).getBytes();
         withTimeoutFactory = new WithTimeout.Factory();
-        retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S.get(settings);
-        shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S.get(settings);
+        retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
+        shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
     }
 
     private WithTimeout withTimeout(){

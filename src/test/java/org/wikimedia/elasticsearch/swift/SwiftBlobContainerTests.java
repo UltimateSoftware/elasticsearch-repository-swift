@@ -40,18 +40,20 @@ public class SwiftBlobContainerTests extends ESBlobStoreContainerTestCase {
     private Swift swift;
     private AccountMock account;
     private Settings blobStoreSettings;
+    private Settings globalSettings;
 
     @Before
     public void setup() {
         this.swift = new Swift();
         this.account = new AccountMock(swift);
         blobStoreSettings = Settings.EMPTY;
+        globalSettings = Settings.EMPTY;
     }
 
     @Override
     protected BlobStore newBlobStore() {
         String container = randomAlphaOfLength(randomIntBetween(1, 10)).toLowerCase(Locale.ROOT);
-        return new SwiftBlobStore(null, blobStoreSettings, this.account, container);
+        return new SwiftBlobStore(null, blobStoreSettings, globalSettings, this.account, container);
     }
 
     public void testCommandExceptionDuringRead() throws IOException {
@@ -63,7 +65,7 @@ public class SwiftBlobContainerTests extends ESBlobStoreContainerTestCase {
     }
 
     public void testBlobExistsCheckAllowed() throws IOException {
-        blobStoreSettings = Settings.builder()
+        globalSettings = Settings.builder()
             .put(SwiftRepository.Swift.MINIMIZE_BLOB_EXISTS_CHECKS_SETTING.getKey(), false)
             .build();
 

@@ -70,6 +70,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     private final boolean blobExistsCheckAllowed;
     private final int retryIntervalS;
     private final int shortOperationTimeoutS;
+    private final boolean allowConcurrentIO;
 
     private final ExecutorService executor;
     private final WithTimeout.Factory withTimeoutFactory;
@@ -82,17 +83,18 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     protected SwiftBlobContainer(SwiftBlobStore blobStore, BlobPath path) {
         super(path);
         this.blobStore = blobStore;
-        this.repository = blobStore.getRepository();
-        this.executor = repository != null ? repository.threadPool().executor(ThreadPool.Names.SNAPSHOT) : null;
-        this.withTimeoutFactory = new WithTimeout.Factory();
+        repository = blobStore.getRepository();
+        executor = repository != null ? repository.threadPool().executor(ThreadPool.Names.SNAPSHOT) : null;
+        withTimeoutFactory = new WithTimeout.Factory();
 
-        String keyPath = path.buildAsString();
-        this.keyPath = keyPath.isEmpty() || keyPath.endsWith("/") ? keyPath : keyPath + "/";
+        String pathString = path.buildAsString();
+        keyPath = pathString.isEmpty() || pathString.endsWith("/") ? pathString : pathString + "/";
 
-        boolean minimizeBlobExistsChecks = SwiftRepository.Swift.MINIMIZE_BLOB_EXISTS_CHECKS_SETTING.get(blobStore.getSettings());
-        this.blobExistsCheckAllowed = keyPath.isEmpty() || !minimizeBlobExistsChecks;
-        this.retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S.get(blobStore.getSettings());
-        this.shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S.get(blobStore.getSettings());
+        boolean minimizeBlobExistsChecks = SwiftRepository.Swift.MINIMIZE_BLOB_EXISTS_CHECKS_SETTING.get(blobStore.getEnvSettings());
+        blobExistsCheckAllowed = pathString.isEmpty() || !minimizeBlobExistsChecks;
+        retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(blobStore.getEnvSettings());
+        shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(blobStore.getEnvSettings());
+        allowConcurrentIO = SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(blobStore.getEnvSettings());
     }
 
     private WithTimeout withTimeout() {
@@ -110,7 +112,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             return;
         }
 
-        if (executor == null) {
+        if (executor == null || !allowConcurrentIO) {
             try {
                 internalDeleteBlob(blobName);
                 return;
@@ -333,7 +335,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                           final long blobSize,
                           boolean failIfAlreadyExists) throws IOException {
         byte[] bytes = readAllBytes(in);
-        if (executor == null) {
+        if (executor == null || !allowConcurrentIO) {
             internalWriteBlob(blobName, bytes, failIfAlreadyExists);
             return;
         }

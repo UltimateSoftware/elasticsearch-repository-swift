@@ -39,16 +39,18 @@ public class SwiftRepositoryPlugin extends Plugin implements RepositoryPlugin {
     public Map<String, Repository.Factory> getRepositories(final Environment env,
                                                            final NamedXContentRegistry registry,
                                                            final ThreadPool threadPool) {
-        return Collections.singletonMap(SwiftRepository.TYPE, repositoryFactory(registry, threadPool));
+        return Collections.singletonMap(SwiftRepository.TYPE, repositoryFactory(env, registry, threadPool));
     }
 
     // for testability
-    protected Repository.Factory repositoryFactory(final NamedXContentRegistry registry,
+    protected Repository.Factory repositoryFactory(final Environment env,
+                                                   final NamedXContentRegistry registry,
                                                    final ThreadPool threadPool){
         return metadata -> new SwiftRepository(metadata,
                 metadata.settings(),
+                env.settings(),
                 registry,
-                new SwiftService(metadata.settings(), threadPool),
+                new SwiftService(env.settings(), threadPool),
                 threadPool);
     }
 
@@ -60,6 +62,11 @@ public class SwiftRepositoryPlugin extends Plugin implements RepositoryPlugin {
     @Override
     public List<Setting<?>> getSettings() {
         return Arrays.asList(SwiftRepository.Swift.MINIMIZE_BLOB_EXISTS_CHECKS_SETTING,
-                             SwiftRepository.Swift.ALLOW_CACHING_SETTING);
+                             SwiftRepository.Swift.ALLOW_CACHING_SETTING,
+                             SwiftRepository.Swift.DELETE_TIMEOUT_MIN_SETTING,
+                             SwiftRepository.Swift.SNAPSHOT_TIMEOUT_MIN_SETTING,
+                             SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING,
+                             SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING ,
+                             SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING);
     }
 }
