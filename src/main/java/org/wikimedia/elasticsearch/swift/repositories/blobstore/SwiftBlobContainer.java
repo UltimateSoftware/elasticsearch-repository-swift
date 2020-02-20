@@ -22,6 +22,7 @@ import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.blobstore.BlobContainer;
 import org.elasticsearch.common.blobstore.BlobMetaData;
 import org.elasticsearch.common.blobstore.BlobPath;
+import org.elasticsearch.common.blobstore.BlobStoreException;
 import org.elasticsearch.common.blobstore.DeleteResult;
 import org.elasticsearch.common.blobstore.support.AbstractBlobContainer;
 import org.elasticsearch.common.blobstore.support.PlainBlobMetaData;
@@ -121,7 +122,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                 throw e;
             }
             catch (Exception e) {
-                throw new RuntimeException(e);
+                throw new BlobStoreException("cannot delete blob [" + blobName + "]", e);
             }
         }
 
@@ -185,13 +186,13 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             }
 
             String message = errors.stream().map(Exception::getMessage).collect(Collectors.joining(","));
-            throw new RuntimeException(message);
+            throw new BlobStoreException("cannot delete blobs in path [" + keyPath + "]: " + message);
         }
         catch (IOException | RuntimeException e) {
            throw e;
         }
         catch (Exception e) {
-            throw new RuntimeException(e);
+            throw new BlobStoreException("cannot delete blobs in path [" + keyPath + "]", e);
         }
     }
 
@@ -242,7 +243,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             throw e;
         }
         catch (Exception e) {
-            throw new RuntimeException(e);
+            throw new BlobStoreException("Cannot list blobs in directory [" + directoryKey + "]", e);
         }
     }
 
@@ -272,7 +273,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             throw e;
         }
         catch (Exception e) {
-            throw new RuntimeException(e);
+            throw new BlobStoreException("cannot list children for [" + keyPath + "]", e);
         }
 
         HashMap<String, BlobContainer> blobMap = new HashMap<>();
@@ -313,7 +314,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                     return new BufferedInputStream(downloadStream, (int) blobStore.getBufferSizeInBytes());
                 }
                 catch (NotFoundException e) {
-                    String message = "Blob object [" + buildKey(blobName) + "] cannot be read";
+                    String message = "cannot read blob [" + buildKey(blobName) + "]";
                     logger.warn(message);
                     NoSuchFileException e2 = new NoSuchFileException(message);
                     e2.initCause(e);
@@ -325,7 +326,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             throw e;
         }
         catch(Exception e) {
-            throw new RuntimeException(e);
+            throw new BlobStoreException("cannot read blob [" + buildKey(blobName) + "]", e);
         }
     }
 
@@ -389,7 +390,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             throw e;
         }
         catch (Exception e) {
-            throw new RuntimeException(e);
+            throw new BlobStoreException("cannot write blob [" + buildKey(blobName) + "]", e);
         }
     }
 
