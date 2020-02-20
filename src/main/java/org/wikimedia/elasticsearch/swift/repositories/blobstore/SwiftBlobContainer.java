@@ -99,7 +99,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     }
 
     private WithTimeout withTimeout() {
-        return withTimeoutFactory.from(repository);
+        return withTimeoutFactory.from(repository != null && allowConcurrentIO ? repository.threadPool() : null);
     }
 
     /**
@@ -113,21 +113,21 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             return;
         }
 
-        if (executor == null || !allowConcurrentIO) {
-            try {
-                internalDeleteBlob(blobName);
-                return;
-            }
-            catch (IOException | RuntimeException e){
-                throw e;
-            }
-            catch (Exception e) {
-                throw new BlobStoreException("cannot delete blob [" + blobName + "]", e);
-            }
+        if (executor != null && allowConcurrentIO) {
+            Future<DeleteResult> task = executor.submit(() -> internalDeleteBlob(blobName));
+            repository.addDeletion(blobName, task);
+            return;
         }
 
-        Future<DeleteResult> task = executor.submit(() -> internalDeleteBlob(blobName));
-        repository.addDeletion(blobName, task);
+        try {
+            internalDeleteBlob(blobName);
+        }
+        catch (IOException | RuntimeException e){
+            throw e;
+        }
+        catch (Exception e) {
+            throw new BlobStoreException("cannot delete blob [" + blobName + "]", e);
+        }
     }
 
     private DeleteResult internalDeleteBlob(String blobName) throws Exception {
@@ -336,17 +336,18 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                           final long blobSize,
                           boolean failIfAlreadyExists) throws IOException {
         byte[] bytes = readAllBytes(in);
-        if (executor == null || !allowConcurrentIO) {
-            internalWriteBlob(blobName, bytes, failIfAlreadyExists);
+
+        if (executor != null && allowConcurrentIO) {
+            Future<Void> task = executor.submit(() -> {
+                internalWriteBlob(blobName, bytes, failIfAlreadyExists);
+                return null;
+            });
+
+            repository.addWrite(blobName, task);
             return;
         }
 
-        Future<Void> task = executor.submit(() -> {
-            internalWriteBlob(blobName, bytes, failIfAlreadyExists);
-            return null;
-        });
-
-        repository.addWrite(blobName, task);
+        internalWriteBlob(blobName, bytes, failIfAlreadyExists);
     }
 
     private byte[] readAllBytes(InputStream in) throws IOException {

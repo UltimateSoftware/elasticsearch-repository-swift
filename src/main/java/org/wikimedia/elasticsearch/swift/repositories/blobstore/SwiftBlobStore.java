@@ -47,6 +47,8 @@ public class SwiftBlobStore implements BlobStore {
     private final String containerName;
 
     private final Settings envSettings;
+    private final Boolean allowConcurrentIO;
+
     public Settings getEnvSettings() {
         return envSettings;
     }
@@ -84,10 +86,11 @@ public class SwiftBlobStore implements BlobStore {
         withTimeoutFactory = new WithTimeout.Factory();
         retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
         shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
+        allowConcurrentIO = SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(envSettings);
     }
 
     private WithTimeout withTimeout(){
-        return withTimeoutFactory.from(repository);
+        return withTimeoutFactory.from(repository != null && allowConcurrentIO ? repository.threadPool() : null);
     }
 
     /**
