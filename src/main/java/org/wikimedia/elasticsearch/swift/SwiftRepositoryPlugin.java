@@ -48,7 +48,7 @@ public class SwiftRepositoryPlugin extends Plugin implements RepositoryPlugin {
         return metadata -> new SwiftRepository(metadata,
                 metadata.settings(),
                 registry,
-                new SwiftService(metadata.settings()),
+                new SwiftService(metadata.settings(), threadPool),
                 threadPool);
     }
 

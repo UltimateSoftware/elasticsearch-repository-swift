@@ -17,7 +17,10 @@
 package org.wikimedia.elasticsearch.swift.repositories.blobstore;
 
 import java.util.Collection;
+import java.util.concurrent.TimeUnit;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.blobstore.BlobContainer;
 import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.blobstore.BlobStore;
@@ -29,11 +32,14 @@ import org.javaswift.joss.model.Container;
 import org.javaswift.joss.model.DirectoryOrObject;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
+import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
 
 /**
  * Our blob store
  */
 public class SwiftBlobStore implements BlobStore {
+    private static final Logger logger = LogManager.getLogger(SwiftBlobStore.class);
+
     // How much to buffer our blobs by
     private final long bufferSizeInBytes;
 
@@ -45,6 +51,10 @@ public class SwiftBlobStore implements BlobStore {
     private final Account auth;
     
     private final SwiftRepository repository;
+    private final WithTimeout.Factory withTimeoutFactory;
+
+    private final int retryIntervalS;
+    private final int shortOperationTimeoutS;
 
     /**
      * Constructor. Sets up the container mostly.
@@ -58,33 +68,54 @@ public class SwiftBlobStore implements BlobStore {
         this.settings = settings;
         this.auth = auth;
         this.containerName = containerName;
-        this.bufferSizeInBytes = settings.getAsBytesSize("buffer_size", new ByteSizeValue(100, ByteSizeUnit.KB)).getBytes();
+        bufferSizeInBytes = settings.getAsBytesSize("buffer_size", new ByteSizeValue(100, ByteSizeUnit.KB)).getBytes();
+        withTimeoutFactory = new WithTimeout.Factory();
+        retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S.get(settings);
+        shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S.get(settings);
+    }
+
+    private WithTimeout withTimeout(){
+        return withTimeoutFactory.from(repository);
     }
 
     /**
-     * Initialize container lazily.
+     * Initialize container lazily. Do not produce a storm of Swift requests.
      * @return the container
+     * @throws Exception from retry()
      */
-    public Container getContainer() {
+    public Container getContainer() throws Exception {
         if (container != null) {
             return container;
         }
 
-        synchronized (this){
+        synchronized(this) {
             if (container != null) {
                 return container;
             }
 
-            SwiftPerms.exec(() -> {
-                container = auth.getContainer(containerName);
-                if (!container.exists()) {
-                    container.create();
-                    container.makePublic();
-                }
-            });
+            container = internalGetContainer();
         }
 
         return container;
+    }
+
+    private Container internalGetContainer() throws Exception {
+        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
+            try {
+                return SwiftPerms.exec(() -> {
+                    Container container = auth.getContainer(containerName);
+                    if (!container.exists()) {
+                        container.create();
+                        container.makePublic();
+                    }
+                    return container;
+                });
+            }
+            catch (Exception e) {
+                logger.warn("cannot get container [" + containerName + "]", e);
+                throw e;
+            }
+        });
     }
 
     /**

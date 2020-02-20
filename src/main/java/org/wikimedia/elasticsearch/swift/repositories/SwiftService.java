@@ -16,33 +16,56 @@
 
 package org.wikimedia.elasticsearch.swift.repositories;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.common.component.AbstractLifecycleComponent;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.threadpool.ThreadPool;
 import org.javaswift.joss.client.factory.AccountConfig;
 import org.javaswift.joss.client.factory.AccountFactory;
 import org.javaswift.joss.client.factory.AuthenticationMethod;
-import org.javaswift.joss.exception.CommandException;
 import org.javaswift.joss.model.Account;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
+import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
+
+import java.util.concurrent.TimeUnit;
 
 public class SwiftService extends AbstractLifecycleComponent {
+    private static final Logger logger = LogManager.getLogger(SwiftService.class);
+
     // The account we'll be connecting to Swift with
     private Account swiftUser;
 
     private final boolean allowCaching;
+
+    private final WithTimeout.Factory withTimeoutFactory;
+    private final ThreadPool threadPool;
+
+    private final int retryIntervalS;
+    private final int shortOperationTimeoutS;
 
     /**
      * Constructor
      * 
      * @param settings
      *            Settings for our repository. Injected.
+     *
+     * @param threadPool for retry()
      */
     @Inject
-    public SwiftService(Settings settings) {
+    public SwiftService(Settings settings, ThreadPool threadPool) {
         allowCaching = settings.getAsBoolean(SwiftRepository.Swift.ALLOW_CACHING_SETTING.getKey(),
                                  true);
+        this.threadPool = threadPool;
+        withTimeoutFactory = new WithTimeout.Factory();
+        retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S.get(settings);
+        shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S.get(settings);
+    }
+
+    private WithTimeout withTimeout() {
+        return withTimeoutFactory.from(threadPool);
     }
 
     /**
@@ -67,15 +90,24 @@ public class SwiftService extends AbstractLifecycleComponent {
             AccountConfig conf = getStandardConfig(url, username, password, AuthenticationMethod.BASIC,
                     preferredRegion);
             swiftUser = createAccount(conf);
-        } catch (CommandException ce) {
+        }
+        catch (Exception ce) {
             throw new ElasticsearchException("Unable to authenticate to Swift Basic " + url + "/" + username +
                     "/" + password, ce);
         }
         return swiftUser;
     }
 
-    private Account createAccount(final AccountConfig conf) {
-        return SwiftPerms.exec(() -> new AccountFactory(conf).createAccount());
+    private Account createAccount(final AccountConfig conf) throws Exception {
+        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS,() -> {
+            try {
+                return SwiftPerms.exec(() -> new AccountFactory(conf).createAccount());
+            }
+            catch (Exception e) {
+                logger.warn("cannot authenticate", e);
+                throw e;
+            }
+        });
     }
 
     public synchronized Account swiftKeyStone(String url,
@@ -95,7 +127,8 @@ public class SwiftService extends AbstractLifecycleComponent {
                     preferredRegion);
             conf.setTenantName(tenantName);
             swiftUser = createAccount(conf);
-        } catch (CommandException ce) {
+        }
+        catch (Exception ce) {
             String msg = "Unable to authenticate to Swift Keystone " + url + "/" + username + "/" + password + "/" + tenantName;
             throw new ElasticsearchException(msg, ce);
         }
@@ -114,7 +147,8 @@ public class SwiftService extends AbstractLifecycleComponent {
                     AuthenticationMethod.TEMPAUTH,
                     preferredRegion);
             swiftUser = createAccount(conf);
-        } catch (CommandException ce) {
+        }
+        catch (Exception ce) {
             throw new ElasticsearchException("Unable to authenticate to Swift Temp", ce);
         }
         return swiftUser;
