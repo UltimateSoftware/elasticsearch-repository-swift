@@ -18,6 +18,8 @@ package org.wikimedia.elasticsearch.swift;
 
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+import java.security.PrivilegedActionException;
+import java.security.PrivilegedExceptionAction;
 
 import org.elasticsearch.SpecialPermission;
 
@@ -26,6 +28,43 @@ import org.elasticsearch.SpecialPermission;
  * https://github.com/javaswift/joss/pull/106 is merged
  */
 public class SwiftPerms {
+    public static void exec(final Runnable runnable) {
+        SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(new SpecialPermission());
+            AccessController.doPrivileged((PrivilegedAction<Object>) () -> {
+                runnable.run();
+                return null;
+            });
+            return;
+        }
+
+        runnable.run();
+    }
+
+    @FunctionalInterface
+    public interface ExceptionRunnable {
+        void run() throws Exception;
+    }
+
+    public static void execThrows(final ExceptionRunnable runnable) throws Exception {
+        try {
+            SecurityManager sm = System.getSecurityManager();
+            if (sm != null) {
+                sm.checkPermission(new SpecialPermission());
+                AccessController.doPrivileged((PrivilegedExceptionAction<Object>) () -> {
+                    runnable.run();
+                    return null;
+                });
+                return;
+            }
+
+            runnable.run();
+        } catch (PrivilegedActionException e) {
+            throw e.getException();
+        }
+    }
+
     public static <T> T exec(final PrivilegedAction<T> callable) {
         SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
@@ -33,5 +72,20 @@ public class SwiftPerms {
             return AccessController.doPrivileged(callable);
         }
         return callable.run();
+    }
+
+    public static <T> T execThrows(final PrivilegedExceptionAction<T> callable) throws Exception {
+        try {
+            SecurityManager sm = System.getSecurityManager();
+            if (sm != null) {
+                sm.checkPermission(new SpecialPermission());
+                return AccessController.doPrivileged(callable);
+            }
+
+            return callable.run();
+
+        } catch (PrivilegedActionException e) {
+            throw e.getException();
+        }
     }
 }

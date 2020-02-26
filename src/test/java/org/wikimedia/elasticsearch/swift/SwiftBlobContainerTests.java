@@ -18,6 +18,7 @@ package org.wikimedia.elasticsearch.swift;
 import org.elasticsearch.common.blobstore.BlobContainer;
 import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.blobstore.BlobStore;
+import org.elasticsearch.common.blobstore.DeleteResult;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.repositories.ESBlobStoreContainerTestCase;
 import org.javaswift.joss.client.mock.AccountMock;
@@ -33,23 +34,26 @@ import java.io.InputStream;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.NoSuchFileException;
 import java.util.Locale;
+import java.util.Map;
 
 public class SwiftBlobContainerTests extends ESBlobStoreContainerTestCase {
     private Swift swift;
     private AccountMock account;
     private Settings blobStoreSettings;
+    private Settings globalSettings;
 
     @Before
     public void setup() {
         this.swift = new Swift();
         this.account = new AccountMock(swift);
         blobStoreSettings = Settings.EMPTY;
+        globalSettings = Settings.EMPTY;
     }
 
     @Override
     protected BlobStore newBlobStore() {
         String container = randomAlphaOfLength(randomIntBetween(1, 10)).toLowerCase(Locale.ROOT);
-        return new SwiftBlobStore(blobStoreSettings, this.account, container);
+        return new SwiftBlobStore(null, blobStoreSettings, globalSettings, this.account, container);
     }
 
     public void testCommandExceptionDuringRead() throws IOException {
@@ -61,7 +65,7 @@ public class SwiftBlobContainerTests extends ESBlobStoreContainerTestCase {
     }
 
     public void testBlobExistsCheckAllowed() throws IOException {
-        blobStoreSettings = Settings.builder()
+        globalSettings = Settings.builder()
             .put(SwiftRepository.Swift.MINIMIZE_BLOB_EXISTS_CHECKS_SETTING.getKey(), false)
             .build();
 
@@ -83,6 +87,24 @@ public class SwiftBlobContainerTests extends ESBlobStoreContainerTestCase {
                 container.writeBlob("blob", in, blobSize, true);
                 container.writeBlob("blob", in, blobSize, true);
             }
+        }
+    }
+
+    public void testDeleteReturnsDeleteResult() throws IOException {
+        try(BlobStore store = newBlobStore()) {
+            final BlobContainer container = store.blobContainer(new BlobPath().add("/path"));
+            DeleteResult result = container.delete();
+
+            assertNotNull(result);
+        }
+    }
+
+    public void testChildrenReturnsMap() throws IOException {
+        try(BlobStore store = newBlobStore()) {
+            final BlobContainer container = store.blobContainer(new BlobPath().add("/path"));
+            Map<String, BlobContainer> result = container.children();
+
+            assertNotNull(result);
         }
     }
 }
