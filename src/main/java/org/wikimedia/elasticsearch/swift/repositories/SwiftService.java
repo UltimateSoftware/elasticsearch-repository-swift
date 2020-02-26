@@ -41,9 +41,8 @@ public class SwiftService extends AbstractLifecycleComponent {
      */
     @Inject
     public SwiftService(Settings settings) {
-        super(settings);
         allowCaching = settings.getAsBoolean(SwiftRepository.Swift.ALLOW_CACHING_SETTING.getKey(),
-                                             true);
+                                 true);
     }
 
     /**

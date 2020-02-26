@@ -18,8 +18,10 @@ package org.wikimedia.elasticsearch.swift.repositories.blobstore;
 
 import com.google.common.collect.ImmutableMap;
 import org.elasticsearch.common.Nullable;
+import org.elasticsearch.common.blobstore.BlobContainer;
 import org.elasticsearch.common.blobstore.BlobMetaData;
 import org.elasticsearch.common.blobstore.BlobPath;
+import org.elasticsearch.common.blobstore.DeleteResult;
 import org.elasticsearch.common.blobstore.support.AbstractBlobContainer;
 import org.elasticsearch.common.blobstore.support.PlainBlobMetaData;
 import org.javaswift.joss.exception.CommandException;
@@ -33,10 +35,11 @@ import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.NoSuchFileException;
+import java.nio.file.FileAlreadyExistsException;
 import java.security.PrivilegedAction;
 import java.util.Collection;
+import java.util.Map;
 
 /**
  * Swift's implementation of the AbstractBlobContainer
@@ -49,6 +52,9 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     protected final String keyPath;
 
     private final boolean blobExistsCheckAllowed;
+
+    // Max page size for list requests. This cannot be increased over 9999.
+    private final int maxPageSize = 9999;
 
     /**
      * Constructor
@@ -70,8 +76,9 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
     /**
      * Does a blob exist? Self-explanatory.
+     * @param blobName A blop to check for existence.
+     * @return true if exist
      */
-    @Override
     public boolean blobExists(final String blobName) {
         return SwiftPerms.exec(() -> blobStore.swift().getObject(buildKey(blobName)).exists());
     }
@@ -95,6 +102,27 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         if (ex != null) {
             throw new NoSuchFileException(blobName, null, "Requested blob was not found " + ex);
         }
+    }
+
+    @Override
+    public DeleteResult delete() {
+        return SwiftPerms.exec(() -> {
+            DeleteResult result = DeleteResult.ZERO;
+            Collection<StoredObject> containerObjects;
+            do {
+                containerObjects = blobStore.swift().list(keyPath, "", maxPageSize);
+                for (StoredObject so : containerObjects) {
+                    try {
+                        long size = so.getContentLength();
+                        deleteBlob(so.getName().substring(keyPath.length()));
+                        result = result.add(1, size);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            } while (containerObjects.size() == maxPageSize);
+            return result;
+        });
     }
 
     /**
@@ -130,6 +158,23 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     @Override
     public ImmutableMap<String, BlobMetaData> listBlobs() {
         return listBlobsByPrefix(null);
+    }
+
+    @Override
+    public Map<String, BlobContainer> children() throws IOException {
+        return SwiftPerms.exec(() -> {
+            ImmutableMap.Builder<String, BlobContainer> blobsBuilder = ImmutableMap.builder();
+            Collection<DirectoryOrObject> files;
+            files = blobStore.swift().listDirectory(new Directory(keyPath, '/'));
+            if (files != null && !files.isEmpty()) {
+                for (DirectoryOrObject object : files) {
+                    if (object.isDirectory()) {
+                        blobsBuilder.put(object.getBareName(), blobStore.blobContainer(new BlobPath().add(object.getName())));
+                    }
+                }
+            }
+            return blobsBuilder.build();
+        });
     }
 
     /**
@@ -176,5 +221,10 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             blobStore.swift().getObject(buildKey(blobName)).uploadObject(in);
             return null;
         });
+    }
+
+    @Override
+    public void writeBlobAtomic(String blobName, InputStream inputStream, long blobSize, boolean failIfAlreadyExists) throws IOException {
+        writeBlob(blobName, inputStream, blobSize, failIfAlreadyExists);
     }
 }
