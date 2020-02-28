@@ -351,7 +351,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     }
 
     private byte[] readAllBytes(InputStream in) throws IOException {
-        final byte[] buffer = new byte[1024];
+        final byte[] buffer = new byte[(int) blobStore.getBufferSizeInBytes()];
         ByteArrayOutputStream baos = new ByteArrayOutputStream(buffer.length);
         int read;
 
