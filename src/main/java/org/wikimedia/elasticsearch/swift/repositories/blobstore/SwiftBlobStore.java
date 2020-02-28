@@ -17,7 +17,10 @@
 package org.wikimedia.elasticsearch.swift.repositories.blobstore;
 
 import java.util.Collection;
+import java.util.concurrent.TimeUnit;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.blobstore.BlobContainer;
 import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.blobstore.BlobStore;
@@ -28,49 +31,112 @@ import org.javaswift.joss.model.Account;
 import org.javaswift.joss.model.Container;
 import org.javaswift.joss.model.DirectoryOrObject;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
+import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
+import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
 
 /**
  * Our blob store
  */
 public class SwiftBlobStore implements BlobStore {
+    private static final Logger logger = LogManager.getLogger(SwiftBlobStore.class);
+
     // How much to buffer our blobs by
-    private final int bufferSizeInBytes;
+    private final long bufferSizeInBytes;
 
     // Our Swift container. This is important.
-    private final Container swift;
+    private final String containerName;
+
+    private final Settings envSettings;
+    private final Boolean allowConcurrentIO;
+
+    public Settings getEnvSettings() {
+        return envSettings;
+    }
+
+    private Container container;
 
     private final Settings settings;
+    private final Account auth;
+    
+    private final SwiftRepository repository;
+    private final WithTimeout.Factory withTimeoutFactory;
+
+    private final int retryIntervalS;
+    private final int shortOperationTimeoutS;
 
     /**
      * Constructor. Sets up the container mostly.
+     * @param repository owning repository
      * @param settings Settings for our repository. Only care about buffer size.
+     * @param envSettings global settings
      * @param auth swift account info
-     * @param container swift container
+     * @param containerName swift container
      */
-    public SwiftBlobStore(Settings settings, final Account auth, final String container) {
+    public SwiftBlobStore(SwiftRepository repository,
+                          Settings settings,
+                          Settings envSettings,
+                          final Account auth,
+                          final String containerName) {
+        this.repository = repository;
         this.settings = settings;
-        this.bufferSizeInBytes = (int)settings.getAsBytesSize("buffer_size", new ByteSizeValue(100, ByteSizeUnit.KB)).getBytes();
-        swift = SwiftPerms.exec(() -> {
-            Container swift = auth.getContainer(container);
-            if (!swift.exists()) {
-                swift.create();
-                swift.makePublic();
-            }
-            return swift;
-        });
+        this.envSettings = envSettings;
+        this.auth = auth;
+        this.containerName = containerName;
+        bufferSizeInBytes = settings.getAsBytesSize("buffer_size", new ByteSizeValue(100, ByteSizeUnit.KB)).getBytes();
+        withTimeoutFactory = new WithTimeout.Factory();
+        retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
+        shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
+        allowConcurrentIO = SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(envSettings);
+    }
+
+    private WithTimeout withTimeout(){
+        return withTimeoutFactory.from(repository != null && allowConcurrentIO ? repository.threadPool() : null);
     }
 
     /**
+     * Initialize container lazily. Do not produce a storm of Swift requests.
      * @return the container
+     * @throws Exception from retry()
      */
-    public Container swift() {
-        return swift;
+    public Container getContainer() throws Exception {
+        if (container != null) {
+            return container;
+        }
+
+        synchronized(this) {
+            if (container != null) {
+                return container;
+            }
+
+            container = internalGetContainer();
+        }
+
+        return container;
+    }
+
+    private Container internalGetContainer() throws Exception {
+        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
+            try {
+                return SwiftPerms.exec(() -> {
+                    Container container = auth.getContainer(containerName);
+                    if (!container.exists()) {
+                        container.create();
+                        container.makePublic();
+                    }
+                    return container;
+                });
+            }
+            catch (Exception e) {
+                logger.warn("cannot get container [" + containerName + "]", e);
+                throw e;
+            }
+        });
     }
 
     /**
      * @return buffer size
      */
-    public int bufferSizeInBytes() {
+    public long getBufferSizeInBytes() {
         return bufferSizeInBytes;
     }
 
@@ -80,15 +146,16 @@ public class SwiftBlobStore implements BlobStore {
      */
     @Override
     public BlobContainer blobContainer(BlobPath path) {
-        return new SwiftBlobContainer(path, this);
+        return new SwiftBlobContainer(this, path);
     }
 
+    //TODO method seems unused. Remove?
     private void deleteByPrefix(Collection<DirectoryOrObject> directoryOrObjects) {
         for (DirectoryOrObject directoryOrObject : directoryOrObjects) {
             if (directoryOrObject.isObject()) {
                 directoryOrObject.getAsObject().delete();
             } else {
-                deleteByPrefix(swift.listDirectory(directoryOrObject.getAsDirectory()));
+                deleteByPrefix(container.listDirectory(directoryOrObject.getAsDirectory()));
             }
         }
     }
@@ -100,7 +167,11 @@ public class SwiftBlobStore implements BlobStore {
     public void close() {
     }
 
-    protected Settings getSettings() {
+    public Settings getSettings() {
         return settings;
+    }
+
+    public SwiftRepository getRepository() {
+        return repository;
     }
 }
