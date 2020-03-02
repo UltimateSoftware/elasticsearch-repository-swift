@@ -16,6 +16,8 @@
 
 package org.wikimedia.elasticsearch.swift.repositories.blobstore;
 
+import org.apache.commons.codec.binary.Hex;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.Nullable;
@@ -37,13 +39,11 @@ import org.wikimedia.elasticsearch.swift.SwiftPerms;
 import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 
-import java.io.BufferedInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.nio.file.FileAlreadyExistsException;
 
 import java.nio.file.NoSuchFileException;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -350,16 +350,44 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         internalWriteBlob(blobName, bytes, failIfAlreadyExists);
     }
 
-    private byte[] readAllBytes(InputStream in) throws IOException {
+    private byte[] readAllBytes(InputStream is) throws IOException {
         final byte[] buffer = new byte[(int) blobStore.getBufferSizeInBytes()];
         ByteArrayOutputStream baos = new ByteArrayOutputStream(buffer.length);
         int read;
 
-        while ((read = in.read(buffer)) != -1) {
+        while ((read = is.read(buffer)) != -1) {
             baos.write(buffer, 0, read);
         }
 
         return baos.toByteArray();
+    }
+
+    static class InputStreamEtagResult
+    {
+        final InputStream is;
+        final String etag;
+
+        InputStreamEtagResult(InputStream is, String etag) {
+            this.is = is;
+            this.etag = etag;
+        }
+    }
+
+    private InputStreamEtagResult calculateEtagFromInputStream(InputStream is) throws IOException {
+        final byte[] buffer = new byte[(int) blobStore.getBufferSizeInBytes()];
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(buffer.length);
+        int read;
+        MessageDigest md5 = DigestUtils.getMd5Digest();
+
+        while ((read = is.read(buffer)) != -1) {
+            md5.update(buffer, 0, read);
+            baos.write(buffer, 0, read);
+        }
+
+        String etag = Hex.encodeHexString(md5.digest());
+        InputStream is2 = new ByteArrayInputStream(baos.toByteArray());
+
+        return new InputStreamEtagResult(null, etag);
     }
 
     private void internalWriteBlob(String blobName, byte[] bytes, boolean failIfAlreadyExists) throws IOException {
