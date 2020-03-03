@@ -30,7 +30,7 @@ See [Snapshot And Restore](https://www.elastic.co/guide/en/elasticsearch/referen
 |-------------------------------------|------------------------------------------------------------
 | swift_container                     | Swift container name. **Mandatory**
 | swift_url                           | Swift auth url. **Mandatory**
-| swift_authmethod                    | Swift auth method, one of "KEYSTONE" "TEMPAUTH" or "" for basic auth
+| swift_authmethod                    | Swift auth method, one of "KEYSTONE", "TEMPAUTH" or omit it for basic auth
 | swift_password                      | Swift password
 | swift_tenantname                    | Swift tenant name, only used with keystone auth
 | swift_username                      | Swift username

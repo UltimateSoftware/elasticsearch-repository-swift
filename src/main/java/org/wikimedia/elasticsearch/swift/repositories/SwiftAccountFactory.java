@@ -16,6 +16,7 @@
 
 package org.wikimedia.elasticsearch.swift.repositories;
 
+import org.javaswift.joss.client.factory.AuthenticationMethod;
 import org.javaswift.joss.model.Account;
 
 import java.util.Locale;
@@ -29,11 +30,12 @@ public class SwiftAccountFactory {
                                         String tenantName,
                                         String authMethod,
                                         String preferredRegion) {
-        if ("KEYSTONE".equals(authMethod.toUpperCase(Locale.getDefault()))) {
+
+        if (AuthenticationMethod.KEYSTONE.name().equalsIgnoreCase(authMethod)) {
             return swiftService.swiftKeyStone(url, username, password, tenantName, preferredRegion);
         }
 
-        if ("TEMPAUTH".equals(authMethod.toUpperCase(Locale.getDefault()))) {
+        if (AuthenticationMethod.TEMPAUTH.name().equalsIgnoreCase(authMethod)) {
             return swiftService.swiftTempAuth(url, username, password, preferredRegion);
         }
 
