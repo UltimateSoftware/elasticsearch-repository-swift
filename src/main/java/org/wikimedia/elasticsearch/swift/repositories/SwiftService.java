@@ -34,6 +34,9 @@ import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
 import java.util.concurrent.TimeUnit;
 
 public class SwiftService extends AbstractLifecycleComponent {
+    private static final String V3_AUTH_URL_SUFFIX = "/auth/tokens";
+    private static final String V1_AUTH_URL_SUFFIX = "/auth/v1.0";
+
     private static final Logger logger = LogManager.getLogger(SwiftService.class);
 
     // The account we'll be connecting to Swift with
@@ -150,10 +153,10 @@ public class SwiftService extends AbstractLifecycleComponent {
 
         try {
             AccountConfig conf = getStandardConfig(url,
-                    username,
-                    password,
-                    AuthenticationMethod.KEYSTONE_V3,
-                    preferredRegion);
+                username,
+                password,
+                AuthenticationMethod.KEYSTONE_V3,
+                preferredRegion);
             conf.setTenantName(tenantName);
 
             if (AuthenticationMethodScope.PROJECT_NAME.name().equalsIgnoreCase(authScope)) {
@@ -200,6 +203,23 @@ public class SwiftService extends AbstractLifecycleComponent {
                                             AuthenticationMethod method,
                                             String preferredRegion) {
         AccountConfig conf = new AccountConfig();
+
+        switch (method) {
+            case KEYSTONE_V3:
+                if (!url.endsWith(V3_AUTH_URL_SUFFIX)) {
+                    url = (url.endsWith("/") ? url.substring(0, url.length()-1) : url) + V3_AUTH_URL_SUFFIX;
+                }
+                break;
+
+            case BASIC:
+                if (!url.endsWith(V1_AUTH_URL_SUFFIX)){
+                    url = (url.endsWith("/") ? url.substring(0, url.length()-1) : url) + V1_AUTH_URL_SUFFIX;
+                }
+                break;
+
+            // there may be more Auth URL cases, which I have no access to and cannot test
+        }
+
         conf.setAuthUrl(url);
         conf.setUsername(username);
         conf.setPassword(password);
