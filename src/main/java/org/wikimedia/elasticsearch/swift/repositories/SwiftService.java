@@ -26,6 +26,7 @@ import org.elasticsearch.threadpool.ThreadPool;
 import org.javaswift.joss.client.factory.AccountConfig;
 import org.javaswift.joss.client.factory.AccountFactory;
 import org.javaswift.joss.client.factory.AuthenticationMethod;
+import org.javaswift.joss.client.factory.AuthenticationMethodScope;
 import org.javaswift.joss.model.Account;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
 import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
@@ -131,6 +132,40 @@ public class SwiftService extends AbstractLifecycleComponent {
         }
         catch (Exception ce) {
             String msg = "Unable to authenticate to Swift Keystone " + url + "/" + username + "/" + password + "/" + tenantName;
+            throw new ElasticsearchException(msg, ce);
+        }
+        return swiftUser;
+    }
+
+    public synchronized Account swiftKeyStoneV3(String url,
+                                                String username,
+                                                String password,
+                                                String tenantName,
+                                                String preferredRegion,
+                                                String authScope) {
+        if (swiftUser != null) {
+            return swiftUser;
+        }
+
+        try {
+            AccountConfig conf = getStandardConfig(url,
+                    username,
+                    password,
+                    AuthenticationMethod.KEYSTONE_V3,
+                    preferredRegion);
+            conf.setTenantName(tenantName);
+
+            if (AuthenticationMethodScope.PROJECT_NAME.name().equalsIgnoreCase(authScope)) {
+                conf.setAuthenticationMethodScope(AuthenticationMethodScope.PROJECT_NAME);
+            }
+            else if (AuthenticationMethodScope.DOMAIN_NAME.name().equalsIgnoreCase(authScope)) {
+                conf.setAuthenticationMethodScope(AuthenticationMethodScope.DOMAIN_NAME);
+            }
+
+            swiftUser = createAccount(conf);
+        }
+        catch (Exception ce) {
+            String msg = "Unable to authenticate to Swift Keystone V3" + url + "/" + username + "/" + password + "/" + tenantName;
             throw new ElasticsearchException(msg, ce);
         }
         return swiftUser;

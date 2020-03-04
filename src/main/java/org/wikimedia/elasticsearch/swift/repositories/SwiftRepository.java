@@ -72,9 +72,12 @@ public class SwiftRepository extends BlobStoreRepository {
         Setting<String> PASSWORD_SETTING = Setting.simpleString("swift_password");
         Setting<String> TENANTNAME_SETTING = Setting.simpleString("swift_tenantname");
         Setting<String> USERNAME_SETTING = Setting.simpleString("swift_username");
-        Setting<String> PREFERRED_REGION_SETTING = Setting.simpleString("swift_preferred_region");
-        Setting<ByteSizeValue> CHUNK_SIZE_SETTING = Setting.byteSizeSetting("chunk_size", new ByteSizeValue(5,
-                ByteSizeUnit.GB));
+        Setting<String> PREFERRED_REGION_SETTING = Setting.simpleString("swift_preferred_region",
+                                                                        (String)null,
+                                                                        Setting.Property.NodeScope);
+        Setting<String> AUTHENTICATION_SCOPE_SETTING = Setting.simpleString("swift_authscope");
+        Setting<ByteSizeValue> CHUNK_SIZE_SETTING = Setting.byteSizeSetting("chunk_size",
+                                                                            new ByteSizeValue(5, ByteSizeUnit.GB));
         Setting<Boolean> COMPRESS_SETTING = Setting.boolSetting("compress", false);
         Setting<Boolean> MINIMIZE_BLOB_EXISTS_CHECKS_SETTING = Setting.boolSetting("repository_swift.minimize_blob_exists_checks",
                                                                                    true,
@@ -316,6 +319,7 @@ public class SwiftRepository extends BlobStoreRepository {
         String tenantName = Swift.TENANTNAME_SETTING.get(settings);
         String authMethod = Swift.AUTHMETHOD_SETTING.get(settings);
         String preferredRegion = Swift.PREFERRED_REGION_SETTING.get(settings);
+        String authScope = Swift.AUTHENTICATION_SCOPE_SETTING.get(settings);
 
         String containerName = Swift.CONTAINER_SETTING.get(settings);
         if (containerName == null) {
@@ -333,7 +337,8 @@ public class SwiftRepository extends BlobStoreRepository {
                 password,
                 tenantName,
                 authMethod,
-                preferredRegion);
+                preferredRegion,
+                authScope);
 
         return new SwiftBlobStore(this, settings, envSettings, account, containerName);
     }
