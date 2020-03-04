@@ -72,9 +72,7 @@ public class SwiftRepository extends BlobStoreRepository {
         Setting<String> PASSWORD_SETTING = Setting.simpleString("swift_password");
         Setting<String> TENANTNAME_SETTING = Setting.simpleString("swift_tenantname");
         Setting<String> USERNAME_SETTING = Setting.simpleString("swift_username");
-        Setting<String> PREFERRED_REGION_SETTING = Setting.simpleString("swift_preferred_region",
-                                                                        (String)null,
-                                                                        Setting.Property.NodeScope);
+        Setting<String> PREFERRED_REGION_SETTING = Setting.simpleString("swift_preferred_region");
         Setting<String> AUTHENTICATION_SCOPE_SETTING = Setting.simpleString("swift_authscope");
         Setting<ByteSizeValue> CHUNK_SIZE_SETTING = Setting.byteSizeSetting("chunk_size",
                                                                             new ByteSizeValue(5, ByteSizeUnit.GB));

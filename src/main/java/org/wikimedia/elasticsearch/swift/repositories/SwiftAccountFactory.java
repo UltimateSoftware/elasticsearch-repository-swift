@@ -30,6 +30,10 @@ public class SwiftAccountFactory {
                                         String preferredRegion,
                                         String authScope) {
 
+        if (preferredRegion.length() == 0) {
+            preferredRegion = null;
+        }
+
         if (AuthenticationMethod.KEYSTONE.name().equalsIgnoreCase(authMethod)) {
             return swiftService.swiftKeyStone(url, username, password, tenantName, preferredRegion);
         }
