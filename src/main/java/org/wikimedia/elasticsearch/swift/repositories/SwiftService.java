@@ -142,7 +142,8 @@ public class SwiftService extends AbstractLifecycleComponent {
                                                 String password,
                                                 String tenantName,
                                                 String preferredRegion,
-                                                String authScope) {
+                                                String authScope,
+                                                String authDomain) {
         if (swiftUser != null) {
             return swiftUser;
         }
@@ -160,6 +161,9 @@ public class SwiftService extends AbstractLifecycleComponent {
             }
             else if (AuthenticationMethodScope.DOMAIN_NAME.name().equalsIgnoreCase(authScope)) {
                 conf.setAuthenticationMethodScope(AuthenticationMethodScope.DOMAIN_NAME);
+                if (authDomain != null && authDomain.length() != 0) {
+                    conf.setDomain(authDomain);
+                }
             }
 
             swiftUser = createAccount(conf);

@@ -73,7 +73,8 @@ public class SwiftRepository extends BlobStoreRepository {
         Setting<String> TENANTNAME_SETTING = Setting.simpleString("swift_tenantname");
         Setting<String> USERNAME_SETTING = Setting.simpleString("swift_username");
         Setting<String> PREFERRED_REGION_SETTING = Setting.simpleString("swift_preferred_region");
-        Setting<String> AUTHENTICATION_SCOPE_SETTING = Setting.simpleString("swift_authscope");
+        Setting<String> AUTHSCOPE_SETTING = Setting.simpleString("swift_authscope");
+        Setting<String> AUTHDOMAIN_SETTING = Setting.simpleString("swift_authdomain");
         Setting<ByteSizeValue> CHUNK_SIZE_SETTING = Setting.byteSizeSetting("chunk_size",
                                                                             new ByteSizeValue(5, ByteSizeUnit.GB));
         Setting<Boolean> COMPRESS_SETTING = Setting.boolSetting("compress", false);
@@ -317,7 +318,8 @@ public class SwiftRepository extends BlobStoreRepository {
         String tenantName = Swift.TENANTNAME_SETTING.get(settings);
         String authMethod = Swift.AUTHMETHOD_SETTING.get(settings);
         String preferredRegion = Swift.PREFERRED_REGION_SETTING.get(settings);
-        String authScope = Swift.AUTHENTICATION_SCOPE_SETTING.get(settings);
+        String authScope = Swift.AUTHSCOPE_SETTING.get(settings);
+        String authDomain = Swift.AUTHDOMAIN_SETTING.get(settings);
 
         String containerName = Swift.CONTAINER_SETTING.get(settings);
         if (containerName == null) {
@@ -336,7 +338,8 @@ public class SwiftRepository extends BlobStoreRepository {
                 tenantName,
                 authMethod,
                 preferredRegion,
-                authScope);
+                authScope,
+                authDomain);
 
         return new SwiftBlobStore(this, settings, envSettings, account, containerName);
     }

@@ -28,7 +28,8 @@ public class SwiftAccountFactory {
                                         String tenantName,
                                         String authMethod,
                                         String preferredRegion,
-                                        String authScope) {
+                                        String authScope,
+                                        String authDomain) {
 
         if (preferredRegion.length() == 0) {
             preferredRegion = null;
@@ -39,7 +40,7 @@ public class SwiftAccountFactory {
         }
 
         if (AuthenticationMethod.KEYSTONE_V3.name().equalsIgnoreCase(authMethod)) {
-            return swiftService.swiftKeyStoneV3(url, username, password, tenantName, preferredRegion, authScope);
+            return swiftService.swiftKeyStoneV3(url, username, password, tenantName, preferredRegion, authScope, authDomain);
         }
 
         if (AuthenticationMethod.TEMPAUTH.name().equalsIgnoreCase(authMethod)) {

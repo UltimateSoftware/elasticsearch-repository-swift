@@ -32,8 +32,9 @@ See [Snapshot And Restore](https://www.elastic.co/guide/en/elasticsearch/referen
 | swift_url                           | Swift auth url. **Mandatory**
 | swift_authmethod                    | Swift auth method, one of "KEYSTONE_V3", "KEYSTONE", "TEMPAUTH" or "BASIC"(default)
 | swift_authscope                     | Authentication method scope, used with KEYSTONE_V3 authentication. Use "PROJECT_NAME"(tenant name below will be used as project name), "DOMAIN_NAME" (user domain "Default" will be used) or omit it.
-| swift_password                      | Swift password
+| swift_authdomain                    | Authenticate against this domain (default domain in "Default"). Only needed with DOMAIN_NAME scope
 | swift_tenantname                    | Swift tenant name, only used with keystone auth
+| swift_password                      | Swift password
 | swift_username                      | Swift username
 | swift_preferred_region              | Region to use.  If you do not specify a region, Swift will pick the endpoint of the first region.  If you have multiple regions, the order is not guarenteed.
 | chunk_size                          | Maximum size for individual objects in the snapshot. Defaults to `5gb` as that's the Swift default
