@@ -16,6 +16,7 @@
 
 package org.wikimedia.elasticsearch.swift.repositories;
 
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchException;
@@ -35,7 +36,6 @@ import java.util.concurrent.TimeUnit;
 
 public class SwiftService extends AbstractLifecycleComponent {
     private static final String V3_AUTH_URL_SUFFIX = "/auth/tokens";
-    private static final String V1_AUTH_URL_SUFFIX = "/auth/v1.0";
 
     private static final Logger logger = LogManager.getLogger(SwiftService.class);
 
@@ -126,10 +126,10 @@ public class SwiftService extends AbstractLifecycleComponent {
 
         try {
             AccountConfig conf = getStandardConfig(url,
-                    username,
-                    password,
-                    AuthenticationMethod.KEYSTONE,
-                    preferredRegion);
+                username,
+                password,
+                AuthenticationMethod.KEYSTONE,
+                preferredRegion);
             conf.setTenantName(tenantName);
             swiftUser = createAccount(conf);
         }
@@ -144,35 +144,37 @@ public class SwiftService extends AbstractLifecycleComponent {
                                                 String username,
                                                 String password,
                                                 String tenantName,
-                                                String preferredRegion,
-                                                String authScope,
-                                                String authDomain) {
+                                                String domainName,
+                                                String preferredRegion) {
         if (swiftUser != null) {
             return swiftUser;
         }
 
         try {
+            if (!url.endsWith(V3_AUTH_URL_SUFFIX)) {
+                url = StringUtils.chomp(url,"/") + V3_AUTH_URL_SUFFIX;
+            }
+
             AccountConfig conf = getStandardConfig(url,
                 username,
                 password,
                 AuthenticationMethod.KEYSTONE_V3,
                 preferredRegion);
-            conf.setTenantName(tenantName);
 
-            if (AuthenticationMethodScope.PROJECT_NAME.name().equalsIgnoreCase(authScope)) {
+            if (StringUtils.isNotEmpty(tenantName)) {
+                conf.setTenantName(tenantName);
                 conf.setAuthenticationMethodScope(AuthenticationMethodScope.PROJECT_NAME);
             }
-            else if (AuthenticationMethodScope.DOMAIN_NAME.name().equalsIgnoreCase(authScope)) {
+            else if (StringUtils.isNotEmpty(domainName) && !"Default".equalsIgnoreCase(domainName)) {
+                conf.setDomain(domainName);
                 conf.setAuthenticationMethodScope(AuthenticationMethodScope.DOMAIN_NAME);
-                if (authDomain != null && authDomain.length() != 0) {
-                    conf.setDomain(authDomain);
-                }
             }
 
             swiftUser = createAccount(conf);
         }
         catch (Exception ce) {
-            String msg = "Unable to authenticate to Swift Keystone V3" + url + "/" + username + "/" + password + "/" + tenantName;
+            String msg = "Unable to authenticate to Swift Keystone V3" + url + "/" + username + "/" + password + "/" +
+                tenantName + "/" + domainName;
             throw new ElasticsearchException(msg, ce);
         }
         return swiftUser;
@@ -203,30 +205,17 @@ public class SwiftService extends AbstractLifecycleComponent {
                                             AuthenticationMethod method,
                                             String preferredRegion) {
         AccountConfig conf = new AccountConfig();
-
-        switch (method) {
-            case KEYSTONE_V3:
-                if (!url.endsWith(V3_AUTH_URL_SUFFIX)) {
-                    url = (url.endsWith("/") ? url.substring(0, url.length()-1) : url) + V3_AUTH_URL_SUFFIX;
-                }
-                break;
-
-            case BASIC:
-                if (!url.endsWith(V1_AUTH_URL_SUFFIX)){
-                    url = (url.endsWith("/") ? url.substring(0, url.length()-1) : url) + V1_AUTH_URL_SUFFIX;
-                }
-                break;
-
-            // there may be more Auth URL cases, which I have no access to and cannot test
-        }
-
         conf.setAuthUrl(url);
         conf.setUsername(username);
         conf.setPassword(password);
         conf.setAuthenticationMethod(method);
         conf.setAllowContainerCaching(allowCaching);
         conf.setAllowCaching(allowCaching);
-        conf.setPreferredRegion(preferredRegion);
+
+        if (StringUtils.isNotEmpty(preferredRegion)) {
+            conf.setPreferredRegion(preferredRegion);
+        }
+
         return conf;
     }
 

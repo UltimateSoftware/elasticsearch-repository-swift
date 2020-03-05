@@ -67,6 +67,7 @@ dependencies {
     compile group: 'com.google.guava', name: 'guava', version: guavaVersion
     compile group: 'org.javaswift', name: 'joss', version: jossVersion
     compile group: 'org.apache.httpcomponents', name: 'httpclient', version: httpclientVersion
+    compile group: 'commons-lang', name: 'commons-lang', version: commonslangVersion
     runtime group: 'org.apache.httpcomponents', name: 'httpcore', version: httpcoreVersion
     runtime group: 'javax.activation', name: 'activation', version: javaxActivationVersion
     runtime group: 'org.slf4j', name: 'slf4j-api', version: slf4jVersion
@@ -74,7 +75,6 @@ dependencies {
     runtime group: 'commons-codec', name: 'commons-codec', version: commonsCodecVersion
     runtime group: 'commons-logging', name: 'commons-logging', version: commonsloggingVersion
     runtime group: 'org.codehaus.jackson', name: 'jackson-mapper-asl', version: jacksonmapperVersion
-    runtime group: 'commons-lang', name: 'commons-lang', version: commonslangVersion
     runtime group: 'commons-io', name: 'commons-io', version: commonsioVersion
     testCompile group: 'junit', name: 'junit', version: junitVersion
     testCompile group: 'org.elasticsearch.test', name: 'framework', version: elasticsearchVersion

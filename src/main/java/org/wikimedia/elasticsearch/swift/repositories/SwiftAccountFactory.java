@@ -26,21 +26,15 @@ public class SwiftAccountFactory {
                                         String username,
                                         String password,
                                         String tenantName,
+                                        String domainName,
                                         String authMethod,
-                                        String preferredRegion,
-                                        String authScope,
-                                        String authDomain) {
-
-        if (preferredRegion.length() == 0) {
-            preferredRegion = null;
+                                        String preferredRegion) {
+        if (AuthenticationMethod.KEYSTONE_V3.name().equalsIgnoreCase(authMethod)) {
+            return swiftService.swiftKeyStoneV3(url, username, password, tenantName, domainName, preferredRegion);
         }
 
         if (AuthenticationMethod.KEYSTONE.name().equalsIgnoreCase(authMethod)) {
             return swiftService.swiftKeyStone(url, username, password, tenantName, preferredRegion);
-        }
-
-        if (AuthenticationMethod.KEYSTONE_V3.name().equalsIgnoreCase(authMethod)) {
-            return swiftService.swiftKeyStoneV3(url, username, password, tenantName, preferredRegion, authScope, authDomain);
         }
 
         if (AuthenticationMethod.TEMPAUTH.name().equalsIgnoreCase(authMethod)) {
