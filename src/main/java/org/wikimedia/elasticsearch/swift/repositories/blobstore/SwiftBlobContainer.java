@@ -300,7 +300,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     }
 
     /**
-     * Fetch a given blob into a BufferedInputStream
+     * Fetch a given blob into memory, verify etag, and return InputStream.
      * @param blobName The blob name to read
      * @return a stream
      */
