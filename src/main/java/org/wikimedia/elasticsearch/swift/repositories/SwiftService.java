@@ -16,6 +16,7 @@
 
 package org.wikimedia.elasticsearch.swift.repositories;
 
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchException;
@@ -26,6 +27,7 @@ import org.elasticsearch.threadpool.ThreadPool;
 import org.javaswift.joss.client.factory.AccountConfig;
 import org.javaswift.joss.client.factory.AccountFactory;
 import org.javaswift.joss.client.factory.AuthenticationMethod;
+import org.javaswift.joss.client.factory.AuthenticationMethodScope;
 import org.javaswift.joss.model.Account;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
 import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
@@ -33,6 +35,8 @@ import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
 import java.util.concurrent.TimeUnit;
 
 public class SwiftService extends AbstractLifecycleComponent {
+    private static final String V3_AUTH_URL_SUFFIX = "/auth/tokens";
+
     private static final Logger logger = LogManager.getLogger(SwiftService.class);
 
     // The account we'll be connecting to Swift with
@@ -122,15 +126,55 @@ public class SwiftService extends AbstractLifecycleComponent {
 
         try {
             AccountConfig conf = getStandardConfig(url,
-                    username,
-                    password,
-                    AuthenticationMethod.KEYSTONE,
-                    preferredRegion);
+                username,
+                password,
+                AuthenticationMethod.KEYSTONE,
+                preferredRegion);
             conf.setTenantName(tenantName);
             swiftUser = createAccount(conf);
         }
         catch (Exception ce) {
             String msg = "Unable to authenticate to Swift Keystone " + url + "/" + username + "/" + password + "/" + tenantName;
+            throw new ElasticsearchException(msg, ce);
+        }
+        return swiftUser;
+    }
+
+    public synchronized Account swiftKeyStoneV3(String url,
+                                                String username,
+                                                String password,
+                                                String tenantName,
+                                                String domainName,
+                                                String preferredRegion) {
+        if (swiftUser != null) {
+            return swiftUser;
+        }
+
+        try {
+            if (!url.endsWith(V3_AUTH_URL_SUFFIX)) {
+                url = StringUtils.chomp(url,"/") + V3_AUTH_URL_SUFFIX;
+            }
+
+            AccountConfig conf = getStandardConfig(url,
+                username,
+                password,
+                AuthenticationMethod.KEYSTONE_V3,
+                preferredRegion);
+
+            if (StringUtils.isNotEmpty(tenantName)) {
+                conf.setTenantName(tenantName);
+                conf.setAuthenticationMethodScope(AuthenticationMethodScope.PROJECT_NAME);
+            }
+            else if (StringUtils.isNotEmpty(domainName) && !"Default".equalsIgnoreCase(domainName)) {
+                conf.setDomain(domainName);
+                conf.setAuthenticationMethodScope(AuthenticationMethodScope.DOMAIN_NAME);
+            }
+
+            swiftUser = createAccount(conf);
+        }
+        catch (Exception ce) {
+            String msg = "Unable to authenticate to Swift Keystone V3" + url + "/" + username + "/" + password + "/" +
+                tenantName + "/" + domainName;
             throw new ElasticsearchException(msg, ce);
         }
         return swiftUser;
@@ -167,7 +211,11 @@ public class SwiftService extends AbstractLifecycleComponent {
         conf.setAuthenticationMethod(method);
         conf.setAllowContainerCaching(allowCaching);
         conf.setAllowCaching(allowCaching);
-        conf.setPreferredRegion(preferredRegion);
+
+        if (StringUtils.isNotEmpty(preferredRegion)) {
+            conf.setPreferredRegion(preferredRegion);
+        }
+
         return conf;
     }
 
