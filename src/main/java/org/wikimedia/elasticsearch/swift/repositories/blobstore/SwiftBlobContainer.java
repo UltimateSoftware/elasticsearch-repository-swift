@@ -53,6 +53,7 @@ import java.util.Map;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -86,7 +87,13 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         super(path);
         this.blobStore = blobStore;
         repository = blobStore.getRepository();
+
         executor = repository != null ? repository.threadPool().executor(ThreadPool.Names.SNAPSHOT) : null;
+
+        // if executor runs on 2 threads or less, using it will cause deadlock
+        allowConcurrentIO = SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(blobStore.getEnvSettings()) &&
+            executor instanceof ThreadPoolExecutor && ((ThreadPoolExecutor)executor).getMaximumPoolSize() > 2;
+
         withTimeoutFactory = new WithTimeout.Factory();
 
         String pathString = path.buildAsString();
@@ -96,7 +103,6 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         blobExistsCheckAllowed = pathString.isEmpty() || !minimizeBlobExistsChecks;
         retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(blobStore.getEnvSettings());
         shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(blobStore.getEnvSettings());
-        allowConcurrentIO = SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(blobStore.getEnvSettings());
     }
 
     private WithTimeout withTimeout() {
