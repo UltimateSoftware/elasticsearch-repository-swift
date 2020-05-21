@@ -25,6 +25,7 @@ import org.elasticsearch.repositories.Repository;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftService;
+import org.wikimedia.elasticsearch.swift.repositories.account.SwiftAccountFactoryImpl;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -46,12 +47,17 @@ public class SwiftRepositoryPlugin extends Plugin implements RepositoryPlugin {
     protected Repository.Factory repositoryFactory(final Environment env,
                                                    final NamedXContentRegistry registry,
                                                    final ThreadPool threadPool){
-        return metadata -> new SwiftRepository(metadata,
+        return metadata -> {
+            SwiftService swiftService = new SwiftService(env.settings(), threadPool);
+            SwiftAccountFactoryImpl accountFactory = new SwiftAccountFactoryImpl(swiftService);
+
+            return new SwiftRepository(metadata,
                 metadata.settings(),
                 env.settings(),
                 registry,
-                new SwiftService(env.settings(), threadPool),
-                threadPool);
+                threadPool,
+                accountFactory);
+        };
     }
 
     @Override

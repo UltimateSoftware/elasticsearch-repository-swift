@@ -45,6 +45,7 @@ import org.elasticsearch.snapshots.SnapshotInfo;
 import org.elasticsearch.snapshots.SnapshotShardFailure;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.javaswift.joss.model.Account;
+import org.wikimedia.elasticsearch.swift.repositories.account.SwiftAccountFactory;
 import org.wikimedia.elasticsearch.swift.repositories.blobstore.SwiftBlobStore;
 
 import java.util.List;
@@ -115,20 +116,18 @@ public class SwiftRepository extends BlobStoreRepository {
     private final ByteSizeValue chunkSize;
 
     private final Settings settings;
-
     private final Settings envSettings;
 
     public Settings getSettings() {
         return settings;
     }
-
     public Settings getEnvSettings() {
         return envSettings;
     }
-    private final SwiftService swiftService;
 
     private final ConcurrentHashMap<String, Future<DeleteResult>> blobDeletionTasks = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Future<Void>> blobWriteTasks = new ConcurrentHashMap<>();
+    private final SwiftAccountFactory accountFactory;
 
     /**
      * Constructs new BlobStoreRepository
@@ -141,24 +140,24 @@ public class SwiftRepository extends BlobStoreRepository {
      *            global settings
      * @param namedXContentRegistry
      *            an instance of NamedXContentRegistry
-     * @param swiftService
-     *            an instance of SwiftService
      * @param threadPool
      *            an elastic search ThreadPool
+     * @param accountFactory
+     *            account factory
      */
     @Inject
     public SwiftRepository(final RepositoryMetaData metadata,
                            final Settings settings,
                            final Settings envSettings,
                            final NamedXContentRegistry namedXContentRegistry,
-                           final SwiftService swiftService,
-                           final ThreadPool threadPool) {
+                           final ThreadPool threadPool,
+                           final SwiftAccountFactory accountFactory) {
         super(metadata, Swift.COMPRESS_SETTING.get(settings), namedXContentRegistry, threadPool);
         this.settings = settings;
         this.envSettings = envSettings;
-        this.swiftService = swiftService;
         this.chunkSize = Swift.CHUNK_SIZE_SETTING.get(settings);
         this.basePath = BlobPath.cleanPath();
+        this.accountFactory = accountFactory;
     }
 
     @Override
@@ -329,8 +328,7 @@ public class SwiftRepository extends BlobStoreRepository {
             throw new RepositoryException(metadata.name(), "No url defined for swift repository");
         }
 
-        Account account = SwiftAccountFactory.createAccount(swiftService,
-            url,
+        Account account = accountFactory.createAccount(url,
             username,
             password,
             tenantName,
