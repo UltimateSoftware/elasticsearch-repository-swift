@@ -14,21 +14,27 @@
  * limitations under the License.
  */
 
-package org.wikimedia.elasticsearch.swift.repositories;
+package org.wikimedia.elasticsearch.swift.repositories.account;
 
 import org.javaswift.joss.client.factory.AuthenticationMethod;
 import org.javaswift.joss.model.Account;
+import org.wikimedia.elasticsearch.swift.repositories.SwiftService;
 
-public class SwiftAccountFactory {
+public class SwiftAccountFactoryImpl implements SwiftAccountFactory {
+    private final SwiftService swiftService;
 
-    public static Account createAccount(SwiftService swiftService,
-                                        String url,
-                                        String username,
-                                        String password,
-                                        String tenantName,
-                                        String domainName,
-                                        String authMethod,
-                                        String preferredRegion) {
+    public SwiftAccountFactoryImpl(SwiftService swiftService){
+        this.swiftService = swiftService;
+    }
+
+    @Override
+    public Account createAccount(String url,
+                                 String username,
+                                 String password,
+                                 String tenantName,
+                                 String domainName,
+                                 String authMethod,
+                                 String preferredRegion) {
         if (AuthenticationMethod.KEYSTONE_V3.name().equalsIgnoreCase(authMethod)) {
             return swiftService.swiftKeyStoneV3(url, username, password, tenantName, domainName, preferredRegion);
         }
@@ -43,5 +49,4 @@ public class SwiftAccountFactory {
 
         return swiftService.swiftBasic(url, username, password, preferredRegion);
     }
-
 }
