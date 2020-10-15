@@ -393,10 +393,17 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         int bufferSize = (int) blobStore.getBufferSizeInBytes();
         final byte[] buffer = new byte[bufferSize];
 
-        try (DirectByteArrayOutputStream baos = new DirectByteArrayOutputStream(sizeHint > 0 ? sizeHint : bufferSize)) {
+        final int streamAllocationSize = sizeHint > 0 ? sizeHint : bufferSize;
+        int totalBytesRead = 0;
+
+        try (DirectByteArrayOutputStream baos = new DirectByteArrayOutputStream(streamAllocationSize)) {
             int read;
 
             while ((read = in.read(buffer)) != -1) {
+                totalBytesRead += read;
+                if (sizeHint > 0 && totalBytesRead > streamAllocationSize){
+                    logger.warn("Exceeded expected allocation: [" + totalBytesRead + "] instead of [" + streamAllocationSize + "]");
+                }
                 baos.write(buffer, 0, read);
             }
 
