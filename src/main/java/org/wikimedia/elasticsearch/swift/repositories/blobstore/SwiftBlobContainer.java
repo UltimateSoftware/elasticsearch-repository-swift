@@ -333,7 +333,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                         InputStream rawInputStream = storedObject.downloadObjectAsInputStream();
                         int contentLength = (int) storedObject.getContentLength();
                         String objectEtag = storedObject.getEtag();
-                        ByteArrayInputStream objectStream = readAllBytes(rawInputStream, contentLength);
+                        InputStream objectStream = readAllBytes(rawInputStream, contentLength);
                         String dataEtag = DigestUtils.md5Hex(objectStream);
                         objectStream.reset();
 
@@ -371,7 +371,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                           boolean failIfAlreadyExists) throws IOException {
         if (executor != null && allowConcurrentIO) {
             // async execution races against the InputStream closed in the caller. Read all data locally.
-            ByteArrayInputStream capturedStream = readAllBytes(in, -1);
+            InputStream capturedStream = readAllBytes(in, -1);
 
             Future<Void> task = executor.submit(() -> {
                 internalWriteBlob(blobName, capturedStream, failIfAlreadyExists);
@@ -386,7 +386,10 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     }
 
     // TODO when compiler level is >8, this method can be replaced with in.transferTo() call
-    private ByteArrayInputStream readAllBytes(InputStream in, int sizeHint) throws IOException {
+    private InputStream readAllBytes(InputStream in, int sizeHint) throws IOException {
+        if (in instanceof ByteArrayInputStream){
+            return in;
+        }
         int bufferSize = (int) blobStore.getBufferSizeInBytes();
         final byte[] buffer = new byte[bufferSize];
 
