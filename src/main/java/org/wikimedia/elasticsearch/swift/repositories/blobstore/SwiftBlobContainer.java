@@ -61,6 +61,17 @@ import java.util.stream.Collectors;
  * Swift's implementation of the AbstractBlobContainer
  */
 public class SwiftBlobContainer extends AbstractBlobContainer {
+    private static class DirectByteArrayOutputStream extends ByteArrayOutputStream {
+        DirectByteArrayOutputStream(int size) {
+            super(size);
+        }
+
+        @Override
+        public synchronized byte[] toByteArray() {
+            return buf;
+        }
+    }
+
     private static final Logger logger = LogManager.getLogger(SwiftBlobContainer.class);
 
     // Our local swift blob store instance
@@ -322,8 +333,9 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                         InputStream rawInputStream = storedObject.downloadObjectAsInputStream();
                         int contentLength = (int) storedObject.getContentLength();
                         String objectEtag = storedObject.getEtag();
-                        byte[] objectData = readAllBytes(rawInputStream, contentLength);
-                        String dataEtag = DigestUtils.md5Hex(objectData);
+                        ByteArrayInputStream objectStream = readAllBytes(rawInputStream, contentLength);
+                        String dataEtag = DigestUtils.md5Hex(objectStream);
+                        objectStream.reset();
 
                         if (!dataEtag.equals(objectEtag)) {
                             String message = "cannot read blob [" + objectName + "]: server etag [" + objectEtag +
@@ -332,7 +344,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                             throw new IOException(message);
                         }
 
-                        return new ByteArrayInputStream(objectData);
+                        return objectStream;
                     });
                 }
                 catch (NotFoundException e) {
@@ -357,12 +369,12 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                           final InputStream in,
                           final long blobSize,
                           boolean failIfAlreadyExists) throws IOException {
-        // async execution races against the InputStream closed in the caller. Read all data locally.
-        byte[] bytes = readAllBytes(in, -1);
-
         if (executor != null && allowConcurrentIO) {
+            // async execution races against the InputStream closed in the caller. Read all data locally.
+            ByteArrayInputStream capturedStream = readAllBytes(in, -1);
+
             Future<Void> task = executor.submit(() -> {
-                internalWriteBlob(blobName, bytes, failIfAlreadyExists);
+                internalWriteBlob(blobName, capturedStream, failIfAlreadyExists);
                 return null;
             });
 
@@ -370,25 +382,26 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             return;
         }
 
-        internalWriteBlob(blobName, bytes, failIfAlreadyExists);
+        internalWriteBlob(blobName, in, failIfAlreadyExists);
     }
 
-    private byte[] readAllBytes(InputStream in, int sizeHint) throws IOException {
+    // TODO when compiler level is >8, this method can be replaced with in.transferTo() call
+    private ByteArrayInputStream readAllBytes(InputStream in, int sizeHint) throws IOException {
         int bufferSize = (int) blobStore.getBufferSizeInBytes();
         final byte[] buffer = new byte[bufferSize];
 
-        try (ByteArrayOutputStream baos = new ByteArrayOutputStream(sizeHint > 0 ? sizeHint : bufferSize)) {
+        try (DirectByteArrayOutputStream baos = new DirectByteArrayOutputStream(sizeHint > 0 ? sizeHint : bufferSize)) {
             int read;
 
             while ((read = in.read(buffer)) != -1) {
                 baos.write(buffer, 0, read);
             }
 
-            return baos.toByteArray();
+            return new ByteArrayInputStream(baos.toByteArray());
         }
     }
 
-    private void internalWriteBlob(String blobName, byte[] bytes, boolean failIfAlreadyExists) throws IOException {
+    private void internalWriteBlob(String blobName, InputStream fromStream, boolean failIfAlreadyExists) throws IOException {
         try {
             IOException exception = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
                 try {
@@ -399,7 +412,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                             return new FileAlreadyExistsException("blob [" + buildKey(blobName) + "] already exists, cannot overwrite");
                         }
 
-                        blob.uploadObject(bytes);
+                        blob.uploadObject(fromStream);
                         return null;
                     });
                 }
@@ -428,4 +441,5 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                                 boolean failIfAlreadyExists) throws IOException {
         writeBlob(blobName, inputStream, blobSize, failIfAlreadyExists);
     }
+
 }
