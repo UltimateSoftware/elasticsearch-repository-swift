@@ -373,9 +373,8 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         internalWriteBlob(blobName, in, failIfAlreadyExists);
     }
 
-    // TODO when compiler level is >8, this method can be replaced with in.transferTo() call
-    private InputStream readAllBytes(String blobName, InputStream in, int sizeHint) throws IOException {
-        if (in instanceof ByteArrayInputStream){
+    private InputStream toReentrantStream(String blobName, InputStream in, long sizeHint) throws IOException {
+        if (in.markSupported()) {
             return in;
         }
 
@@ -390,16 +389,15 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             }
         };
 
-            while ((read = in.read(buffer)) != -1) {
-                totalBytesRead += read;
-                if (sizeHint > 0 && totalBytesRead > sizeHint){
-                    logger.warn("Exceeded expected allocation : [" + blobName + "], totalBytesRead [" + "] instead of [" + sizeHint + "]");
-                }
-                baos.write(buffer, 0, read);
+        while ((read = in.read(buffer)) != -1) {
+            totalBytesRead += read;
+            if (sizeHint > 0 && totalBytesRead > sizeHint){
+                logger.warn("Exceeded expected allocation : [" + blobName + "], totalBytesRead [" + "] instead of [" + sizeHint + "]");
             }
-
-            return new ByteArrayInputStream(baos.toByteArray());
+            baos.write(buffer, 0, read);
         }
+
+        return new ByteArrayInputStream(baos.toByteArray());
     }
 
     private void internalWriteBlob(String blobName, InputStream fromStream, boolean failIfAlreadyExists) throws IOException {
