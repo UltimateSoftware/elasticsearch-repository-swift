@@ -61,17 +61,6 @@ import java.util.stream.Collectors;
  * Swift's implementation of the AbstractBlobContainer
  */
 public class SwiftBlobContainer extends AbstractBlobContainer {
-    private static class DirectByteArrayOutputStream extends ByteArrayOutputStream {
-        DirectByteArrayOutputStream(int size) {
-            super(size);
-        }
-
-        @Override
-        public synchronized byte[] toByteArray() {
-            return buf;
-        }
-    }
-
     private static final Logger logger = LogManager.getLogger(SwiftBlobContainer.class);
 
     // Our local swift blob store instance
@@ -396,7 +385,13 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         final int streamAllocationSize = sizeHint > 0 ? sizeHint : bufferSize;
         int totalBytesRead = 0;
 
-        try (DirectByteArrayOutputStream baos = new DirectByteArrayOutputStream(streamAllocationSize)) {
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream(sizeHint > 0 ? sizeHint : bufferSize) {
+                @Override
+                public synchronized byte[] toByteArray() {
+                    return buf;
+                }
+            })
+        {
             int read;
 
             while ((read = in.read(buffer)) != -1) {
