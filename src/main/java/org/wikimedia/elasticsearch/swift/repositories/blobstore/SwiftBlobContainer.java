@@ -322,7 +322,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                         InputStream rawInputStream = storedObject.downloadObjectAsInputStream();
                         int contentLength = (int) storedObject.getContentLength();
                         String objectEtag = storedObject.getEtag();
-                        InputStream objectStream = readAllBytes(rawInputStream, contentLength);
+                        InputStream objectStream = readAllBytes(blobName, rawInputStream, contentLength);
                         String dataEtag = DigestUtils.md5Hex(objectStream);
                         objectStream.reset();
 
@@ -360,7 +360,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                           boolean failIfAlreadyExists) throws IOException {
         if (executor != null && allowConcurrentIO) {
             // async execution races against the InputStream closed in the caller. Read all data locally.
-            InputStream capturedStream = readAllBytes(in, -1);
+            InputStream capturedStream = readAllBytes(blobName, in, -1);
 
             Future<Void> task = executor.submit(() -> {
                 internalWriteBlob(blobName, capturedStream, failIfAlreadyExists);
@@ -375,14 +375,13 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     }
 
     // TODO when compiler level is >8, this method can be replaced with in.transferTo() call
-    private InputStream readAllBytes(InputStream in, int sizeHint) throws IOException {
+    private InputStream readAllBytes(String blobName, InputStream in, int sizeHint) throws IOException {
         if (in instanceof ByteArrayInputStream){
             return in;
         }
+
         int bufferSize = (int) blobStore.getBufferSizeInBytes();
         final byte[] buffer = new byte[bufferSize];
-
-        final int streamAllocationSize = sizeHint > 0 ? sizeHint : bufferSize;
         int totalBytesRead = 0;
 
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream(sizeHint > 0 ? sizeHint : bufferSize) {
@@ -396,8 +395,8 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
             while ((read = in.read(buffer)) != -1) {
                 totalBytesRead += read;
-                if (sizeHint > 0 && totalBytesRead > streamAllocationSize){
-                    logger.warn("Exceeded expected allocation: [" + totalBytesRead + "] instead of [" + streamAllocationSize + "]");
+                if (sizeHint > 0 && totalBytesRead > sizeHint){
+                    logger.warn("Exceeded expected allocation : [" + blobName + "], totalBytesRead [" + "] instead of [" + sizeHint + "]");
                 }
                 baos.write(buffer, 0, read);
             }
