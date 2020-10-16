@@ -373,14 +373,14 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         internalWriteBlob(blobName, in, failIfAlreadyExists);
     }
 
-    private InputStream toReentrantStream(String blobName, InputStream in, long sizeHint) throws IOException {
+    private InputStream toReentrantStream(final String blobName, InputStream in, final long sizeHint) throws IOException {
         if (in.markSupported()) {
             logger.debug("Reusing reentrant stream of class [" + in.getClass().getName() + "]");
             return in;
         }
         logger.debug("Reading blob ["+ blobName +"], expected size ["+ sizeHint + "] bytes");
 
-        int bufferSize = (int) blobStore.getBufferSizeInBytes();
+        final int bufferSize = (int) blobStore.getBufferSizeInBytes();
         final byte[] buffer = new byte[bufferSize];
         long totalBytesRead = 0;
         int read;
@@ -394,7 +394,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         while ((read = in.read(buffer)) != -1) {
             totalBytesRead += read;
             if (sizeHint > 0 && totalBytesRead > sizeHint){
-                logger.warn("Exceeded expected allocation : [" + blobName + "], totalBytesRead [" + "] instead of [" + sizeHint + "]");
+                logger.warn("Exceeded expected allocation : [" + blobName + "], totalBytesRead [" + totalBytesRead + "] instead of [" + sizeHint + "]");
             }
             baos.write(buffer, 0, read);
         }
