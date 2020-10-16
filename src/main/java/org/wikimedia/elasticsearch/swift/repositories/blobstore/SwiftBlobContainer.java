@@ -320,9 +320,8 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                     return SwiftPerms.execThrows(() -> {
                         StoredObject storedObject = blobStore.getContainer().getObject(objectName);
                         InputStream rawInputStream = storedObject.downloadObjectAsInputStream();
-                        int contentLength = (int) storedObject.getContentLength();
                         String objectEtag = storedObject.getEtag();
-                        InputStream objectStream = readAllBytes(blobName, rawInputStream, contentLength);
+                        InputStream objectStream = toReentrantStream(blobName, rawInputStream, storedObject.getContentLength());
                         String dataEtag = DigestUtils.md5Hex(objectStream);
                         objectStream.reset();
 
@@ -360,7 +359,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                           boolean failIfAlreadyExists) throws IOException {
         if (executor != null && allowConcurrentIO) {
             // async execution races against the InputStream closed in the caller. Read all data locally.
-            InputStream capturedStream = readAllBytes(blobName, in, -1);
+            InputStream capturedStream = toReentrantStream(blobName, in, blobSize);
 
             Future<Void> task = executor.submit(() -> {
                 internalWriteBlob(blobName, capturedStream, failIfAlreadyExists);
@@ -382,16 +381,14 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
         int bufferSize = (int) blobStore.getBufferSizeInBytes();
         final byte[] buffer = new byte[bufferSize];
-        int totalBytesRead = 0;
-
-        try (ByteArrayOutputStream baos = new ByteArrayOutputStream(sizeHint > 0 ? sizeHint : bufferSize) {
-                @Override
-                public synchronized byte[] toByteArray() {
-                    return buf;
-                }
-            })
-        {
-            int read;
+        long totalBytesRead = 0;
+        int read;
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(sizeHint > 0 ? (int) sizeHint : bufferSize) {
+            @Override
+            public synchronized byte[] toByteArray() {
+                return buf;
+            }
+        };
 
             while ((read = in.read(buffer)) != -1) {
                 totalBytesRead += read;
