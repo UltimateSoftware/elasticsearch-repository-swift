@@ -375,8 +375,10 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
     private InputStream toReentrantStream(String blobName, InputStream in, long sizeHint) throws IOException {
         if (in.markSupported()) {
+            logger.debug("Reusing reentrant stream of class [" + in.getClass().getName() + "]");
             return in;
         }
+        logger.debug("Reading blob ["+ blobName +"], expected size ["+ sizeHint + "] bytes");
 
         int bufferSize = (int) blobStore.getBufferSizeInBytes();
         final byte[] buffer = new byte[bufferSize];
