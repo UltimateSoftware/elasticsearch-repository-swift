@@ -74,6 +74,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     private final int retryIntervalS;
     private final int shortOperationTimeoutS;
     private final boolean allowConcurrentIO;
+    private final boolean streamRead;
 
     private final ExecutorService executor;
     private final WithTimeout.Factory withTimeoutFactory;
@@ -103,6 +104,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         blobExistsCheckAllowed = pathString.isEmpty() || !minimizeBlobExistsChecks;
         retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(blobStore.getEnvSettings());
         shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(blobStore.getEnvSettings());
+        streamRead = SwiftRepository.Swift.STREAM_READ_SETTING.get(blobStore.getEnvSettings());
     }
 
     private WithTimeout withTimeout() {

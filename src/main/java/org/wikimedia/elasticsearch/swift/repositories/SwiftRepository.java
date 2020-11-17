@@ -105,6 +105,10 @@ public class SwiftRepository extends BlobStoreRepository {
         Setting<Boolean> ALLOW_CONCURRENT_IO_SETTING = Setting.boolSetting("repository_swift.allow_concurrent_io",
                 true,
                 Setting.Property.NodeScope);
+
+        Setting<Boolean> STREAM_READ_SETTING = Setting.boolSetting("repository_swift.stream_read",
+                true,
+                Setting.Property.NodeScope);
     }
 
     private static final Logger logger = LogManager.getLogger(SwiftRepository.class);
