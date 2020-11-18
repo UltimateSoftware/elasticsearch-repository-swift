@@ -37,6 +37,7 @@ import org.javaswift.joss.model.StoredObject;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
 import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
+import org.wikimedia.elasticsearch.swift.util.stream.InputStreamWrapperWithDataHash;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -323,18 +324,9 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                         StoredObject storedObject = blobStore.getContainer().getObject(objectName);
                         InputStream rawInputStream = storedObject.downloadObjectAsInputStream();
                         String objectEtag = storedObject.getEtag();
-                        InputStream objectStream = toReentrantStream(blobName, rawInputStream, storedObject.getContentLength());
-                        String dataEtag = DigestUtils.md5Hex(objectStream);
-                        objectStream.reset();
 
-                        if (!dataEtag.equals(objectEtag)) {
-                            String message = "cannot read blob [" + objectName + "]: server etag [" + objectEtag +
-                                "] does not match calculated etag [" + dataEtag + "]";
-                            logger.warn(message);
-                            throw new IOException(message);
-                        }
-
-                        return objectStream;
+                        return streamRead ? new InputStreamWrapperWithDataHash(objectName, rawInputStream, objectEtag)
+                                : objectToReentrantStream(objectName, rawInputStream, storedObject.getContentLength(), objectEtag);
                     });
                 }
                 catch (NotFoundException e) {
@@ -361,7 +353,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                           boolean failIfAlreadyExists) throws IOException {
         if (executor != null && allowConcurrentIO) {
             // async execution races against the InputStream closed in the caller. Read all data locally.
-            InputStream capturedStream = toReentrantStream(blobName, in, blobSize);
+            InputStream capturedStream = streamToReentrantStream(blobName, in, blobSize);
 
             Future<Void> task = executor.submit(() -> {
                 internalWriteBlob(blobName, capturedStream, failIfAlreadyExists);
@@ -375,12 +367,47 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         internalWriteBlob(blobName, in, failIfAlreadyExists);
     }
 
-    private InputStream toReentrantStream(final String blobName, InputStream in, final long sizeHint) throws IOException {
+
+    /**
+     * Read object entirely into memory and check its etag.
+     * @param objectName full path to the object
+     * @param rawInputStream server input stream
+     * @param size size hint, do not trust it
+     * @param objectEtag server etag (MD5 hash as hex)
+     * @return object data as memory stream
+     * @throws IOException on I/O errors or etag mismatch
+     */
+    private InputStream objectToReentrantStream(String objectName, InputStream rawInputStream, long size, String objectEtag) throws IOException {
+        InputStream objectStream = streamToReentrantStream(objectName, rawInputStream, size);
+        String dataEtag = DigestUtils.md5Hex(objectStream);
+
+        if (dataEtag.equalsIgnoreCase(objectEtag)) {
+            objectStream.reset();
+            return objectStream;
+        }
+
+        String message = "cannot read blob [" + objectName + "]: server etag [" + objectEtag +
+                "] does not match calculated etag [" + dataEtag + "]";
+        logger.warn(message);
+        throw new IOException(message);
+    }
+
+
+    /**
+     * If the original stream was re-entrant, do nothing; otherwise, read blob entirely into memory.
+     *
+     * @param objectName object path
+     * @param in server input stream
+     * @param sizeHint size hint, do not trust it
+     * @return re-entrant stream holding the blob
+     * @throws IOException on I/O error
+     */
+    private InputStream streamToReentrantStream(final String objectName, InputStream in, final long sizeHint) throws IOException {
         if (in.markSupported()) {
             logger.debug("Reusing reentrant stream of class [" + in.getClass().getName() + "]");
             return in;
         }
-        logger.debug("Reading blob ["+ blobName +"], expected size ["+ sizeHint + "] bytes");
+        logger.debug("Reading blob ["+ objectName +"], expected size ["+ sizeHint + "] bytes");
 
         final int bufferSize = (int) blobStore.getBufferSizeInBytes();
         final byte[] buffer = new byte[bufferSize];
@@ -396,7 +423,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         while ((read = in.read(buffer)) != -1) {
             totalBytesRead += read;
             if (sizeHint > 0 && totalBytesRead > sizeHint){
-                logger.warn("Exceeded expected allocation : [" + blobName + "], totalBytesRead [" + totalBytesRead + "] instead of [" + sizeHint + "]");
+                logger.warn("Exceeded expected allocation : [" + objectName + "], totalBytesRead [" + totalBytesRead + "] instead of [" + sizeHint + "]");
             }
             baos.write(buffer, 0, read);
         }
