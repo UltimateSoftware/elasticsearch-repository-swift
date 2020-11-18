@@ -334,7 +334,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                     });
                 }
                 catch (NotFoundException e) {
-                    String message = "cannot read blob [" + objectName + "]";
+                    String message = "cannot read object [" + objectName + "]";
                     logger.warn(message);
                     NoSuchFileException e2 = new NoSuchFileException(message);
                     e2.initCause(e);
@@ -346,7 +346,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             throw e;
         }
         catch(Exception e) {
-            throw new BlobStoreException("cannot read blob [" + objectName + "]", e);
+            throw new BlobStoreException("cannot read object [" + objectName + "]", e);
         }
     }
 
@@ -357,7 +357,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                           boolean failIfAlreadyExists) throws IOException {
         if (executor != null && allowConcurrentIO && !streamWrite) {
             // async execution races against the InputStream closed in the caller. Read all data locally.
-            InputStream capturedStream = streamToReentrantStream(blobName, in, blobSize);
+            InputStream capturedStream = streamToReentrantStream(blobName, in, blobSize, true);
 
             Future<Void> task = executor.submit(() -> {
                 internalWriteBlob(blobName, capturedStream, failIfAlreadyExists);
@@ -393,12 +393,15 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             return objectStream;
         }
 
-        String message = "cannot read blob [" + objectName + "]: server etag [" + objectEtag +
+        String message = "cannot read object [" + objectName + "]: server etag [" + objectEtag +
                 "] does not match calculated etag [" + dataEtag + "]";
         logger.warn(message);
         throw new IOException(message);
     }
 
+    private InputStream streamToReentrantStream(String objectName, InputStream in, long sizeHint) throws IOException {
+        return streamToReentrantStream(objectName, in, sizeHint, false);
+    }
 
     /**
      * If the original stream was re-entrant, do nothing; otherwise, read blob entirely into memory.
@@ -406,17 +409,19 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      * @param objectName object path
      * @param in server input stream
      * @param sizeHint size hint, do not trust it
+     * @param forceRead force reading into memory
      * @return re-entrant stream holding the blob
      * @throws IOException on I/O error
      */
-    private InputStream streamToReentrantStream(final String objectName,
+    private InputStream streamToReentrantStream(String objectName,
                                                 InputStream in,
-                                                final long sizeHint) throws IOException {
-        if (in.markSupported()) {
+                                                long sizeHint,
+                                                boolean forceRead) throws IOException {
+        if (!forceRead && in.markSupported()) {
             logger.debug("Reusing reentrant stream of class [" + in.getClass().getName() + "]");
             return in;
         }
-        logger.debug("Reading blob ["+ objectName +"], expected size ["+ sizeHint + "] bytes");
+        logger.debug("Reading object ["+ objectName +"], expected size ["+ sizeHint + "] bytes");
 
         final int bufferSize = (int) blobStore.getBufferSizeInBytes();
         final byte[] buffer = new byte[bufferSize];
@@ -458,7 +463,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                     });
                 }
                 catch (Exception e) {
-                    logger.warn("cannot write blob [" + objectName + "]", e);
+                    logger.warn("cannot write object [" + objectName + "]", e);
                     throw e;
                 }
             });
@@ -482,5 +487,4 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                                 boolean failIfAlreadyExists) throws IOException {
         writeBlob(blobName, inputStream, blobSize, failIfAlreadyExists);
     }
-
 }
