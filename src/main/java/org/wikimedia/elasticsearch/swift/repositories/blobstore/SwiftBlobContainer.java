@@ -27,6 +27,7 @@ import org.elasticsearch.common.blobstore.BlobStoreException;
 import org.elasticsearch.common.blobstore.DeleteResult;
 import org.elasticsearch.common.blobstore.support.AbstractBlobContainer;
 import org.elasticsearch.common.blobstore.support.PlainBlobMetaData;
+import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.javaswift.joss.client.core.ContainerPaginationMap;
 import org.javaswift.joss.exception.NotFoundException;
@@ -76,6 +77,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     private final int shortOperationTimeoutS;
     private final boolean allowConcurrentIO;
     private final boolean streamRead;
+    private final boolean streamWrite;
 
     private final ExecutorService executor;
     private final WithTimeout.Factory withTimeoutFactory;
@@ -89,11 +91,12 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         super(path);
         this.blobStore = blobStore;
         repository = blobStore.getRepository();
+        final Settings envSettings = blobStore.getEnvSettings();
 
         executor = repository != null ? repository.threadPool().executor(ThreadPool.Names.SNAPSHOT) : null;
 
         // if executor runs on 2 threads or less, using it will cause deadlock
-        allowConcurrentIO = SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(blobStore.getEnvSettings()) &&
+        allowConcurrentIO = SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(envSettings) &&
             executor instanceof ThreadPoolExecutor && ((ThreadPoolExecutor)executor).getMaximumPoolSize() > 2;
 
         withTimeoutFactory = new WithTimeout.Factory();
@@ -101,11 +104,12 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         String pathString = path.buildAsString();
         keyPath = pathString.isEmpty() || pathString.endsWith("/") ? pathString : pathString + "/";
 
-        boolean minimizeBlobExistsChecks = SwiftRepository.Swift.MINIMIZE_BLOB_EXISTS_CHECKS_SETTING.get(blobStore.getEnvSettings());
+        boolean minimizeBlobExistsChecks = SwiftRepository.Swift.MINIMIZE_BLOB_EXISTS_CHECKS_SETTING.get(envSettings);
         blobExistsCheckAllowed = pathString.isEmpty() || !minimizeBlobExistsChecks;
-        retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(blobStore.getEnvSettings());
-        shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(blobStore.getEnvSettings());
-        streamRead = SwiftRepository.Swift.STREAM_READ_SETTING.get(blobStore.getEnvSettings());
+        retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
+        shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
+        streamRead = SwiftRepository.Swift.STREAM_READ_SETTING.get(envSettings);
+        streamWrite = SwiftRepository.Swift.STREAM_WRITE_SETTING.get(envSettings);
     }
 
     private WithTimeout withTimeout() {
@@ -351,7 +355,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                           final InputStream in,
                           final long blobSize,
                           boolean failIfAlreadyExists) throws IOException {
-        if (executor != null && allowConcurrentIO) {
+        if (executor != null && allowConcurrentIO && !streamWrite) {
             // async execution races against the InputStream closed in the caller. Read all data locally.
             InputStream capturedStream = streamToReentrantStream(blobName, in, blobSize);
 
@@ -377,7 +381,10 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      * @return object data as memory stream
      * @throws IOException on I/O errors or etag mismatch
      */
-    private InputStream objectToReentrantStream(String objectName, InputStream rawInputStream, long size, String objectEtag) throws IOException {
+    private InputStream objectToReentrantStream(String objectName,
+                                                InputStream rawInputStream,
+                                                long size,
+                                                String objectEtag) throws IOException {
         InputStream objectStream = streamToReentrantStream(objectName, rawInputStream, size);
         String dataEtag = DigestUtils.md5Hex(objectStream);
 
@@ -402,7 +409,9 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      * @return re-entrant stream holding the blob
      * @throws IOException on I/O error
      */
-    private InputStream streamToReentrantStream(final String objectName, InputStream in, final long sizeHint) throws IOException {
+    private InputStream streamToReentrantStream(final String objectName,
+                                                InputStream in,
+                                                final long sizeHint) throws IOException {
         if (in.markSupported()) {
             logger.debug("Reusing reentrant stream of class [" + in.getClass().getName() + "]");
             return in;
@@ -423,7 +432,8 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         while ((read = in.read(buffer)) != -1) {
             totalBytesRead += read;
             if (sizeHint > 0 && totalBytesRead > sizeHint){
-                logger.warn("Exceeded expected allocation : [" + objectName + "], totalBytesRead [" + totalBytesRead + "] instead of [" + sizeHint + "]");
+                logger.warn("Exceeded expected allocation : [" + objectName + "], totalBytesRead [" + totalBytesRead +
+                            "] instead of [" + sizeHint + "]");
             }
             baos.write(buffer, 0, read);
         }
@@ -432,22 +442,23 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     }
 
     private void internalWriteBlob(String blobName, InputStream fromStream, boolean failIfAlreadyExists) throws IOException {
+        final String objectName = buildKey(blobName);
         try {
             IOException exception = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
                 try {
                     return SwiftPerms.execThrows(() -> {
-                        StoredObject blob = blobStore.getContainer().getObject(buildKey(blobName));
+                        StoredObject object = blobStore.getContainer().getObject(objectName);
 
-                        if (failIfAlreadyExists && blobExistsCheckAllowed && blob.exists()) {
-                            return new FileAlreadyExistsException("blob [" + buildKey(blobName) + "] already exists, cannot overwrite");
+                        if (failIfAlreadyExists && blobExistsCheckAllowed && object.exists()) {
+                            return new FileAlreadyExistsException("object [" + objectName + "] already exists, cannot overwrite");
                         }
 
-                        blob.uploadObject(fromStream);
+                        object.uploadObject(fromStream);
                         return null;
                     });
                 }
                 catch (Exception e) {
-                    logger.warn("cannot write blob [" + buildKey(blobName) + "]", e);
+                    logger.warn("cannot write blob [" + objectName + "]", e);
                     throw e;
                 }
             });
@@ -460,7 +471,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             throw e;
         }
         catch (Exception e) {
-            throw new BlobStoreException("cannot write blob [" + buildKey(blobName) + "]", e);
+            throw new BlobStoreException("cannot write object [" + objectName + "]", e);
         }
     }
 
