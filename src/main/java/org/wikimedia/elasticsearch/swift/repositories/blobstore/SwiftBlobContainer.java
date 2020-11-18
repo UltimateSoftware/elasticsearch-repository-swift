@@ -385,7 +385,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                                                 InputStream rawInputStream,
                                                 long size,
                                                 String objectEtag) throws IOException {
-        InputStream objectStream = streamToReentrantStream(objectName, rawInputStream, size);
+        InputStream objectStream = streamToReentrantStream(objectName, rawInputStream, size, false);
         String dataEtag = DigestUtils.md5Hex(objectStream);
 
         if (dataEtag.equalsIgnoreCase(objectEtag)) {
@@ -397,10 +397,6 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                 "] does not match calculated etag [" + dataEtag + "]";
         logger.warn(message);
         throw new IOException(message);
-    }
-
-    private InputStream streamToReentrantStream(String objectName, InputStream in, long sizeHint) throws IOException {
-        return streamToReentrantStream(objectName, in, sizeHint, false);
     }
 
     /**
