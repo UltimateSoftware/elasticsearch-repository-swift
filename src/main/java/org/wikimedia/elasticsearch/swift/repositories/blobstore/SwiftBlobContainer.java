@@ -425,7 +425,6 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
         final int bufferSize = (int) blobStore.getBufferSizeInBytes();
         final byte[] buffer = new byte[bufferSize];
-        long totalBytesRead = 0;
         int read;
         ByteArrayOutputStream baos = new ByteArrayOutputStream(sizeHint > 0 ? (int) sizeHint : bufferSize) {
             @Override
@@ -435,15 +434,16 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         };
 
         while ((read = in.read(buffer)) != -1) {
-            totalBytesRead += read;
-            if (sizeHint > 0 && totalBytesRead > sizeHint){
-                logger.warn("Exceeded expected allocation : [" + objectName + "], totalBytesRead [" + totalBytesRead +
-                            "] instead of [" + sizeHint + "]");
-            }
             baos.write(buffer, 0, read);
         }
 
-        return new ByteArrayInputStream(baos.toByteArray());
+        final byte[] bytesRead = baos.toByteArray();
+
+        if (sizeHint > 0 && bytesRead.length > sizeHint){
+            logger.warn("Exceeded expected allocation : [" + objectName + "], read [" + bytesRead.length +
+                    "] bytes instead of [" + sizeHint + "]");
+        }
+        return new ByteArrayInputStream(bytesRead);
     }
 
     private void internalWriteBlob(String blobName, InputStream fromStream, boolean failIfAlreadyExists) throws IOException {
