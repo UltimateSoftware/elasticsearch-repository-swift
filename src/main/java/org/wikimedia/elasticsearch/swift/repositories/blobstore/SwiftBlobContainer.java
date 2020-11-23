@@ -31,6 +31,7 @@ import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.javaswift.joss.client.core.ContainerPaginationMap;
 import org.javaswift.joss.exception.NotFoundException;
+import org.javaswift.joss.instructions.UploadInstructions;
 import org.javaswift.joss.model.Container;
 import org.javaswift.joss.model.Directory;
 import org.javaswift.joss.model.DirectoryOrObject;
@@ -360,7 +361,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             InputStream capturedStream = streamToReentrantStream(blobName, in, blobSize, true);
 
             Future<Void> task = executor.submit(() -> {
-                internalWriteBlob(blobName, capturedStream, failIfAlreadyExists);
+                internalWriteBlob(blobName, capturedStream, blobSize, failIfAlreadyExists);
                 return null;
             });
 
@@ -368,7 +369,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             return;
         }
 
-        internalWriteBlob(blobName, in, failIfAlreadyExists);
+        internalWriteBlob(blobName, in, blobSize, failIfAlreadyExists);
     }
 
 
@@ -442,11 +443,15 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         return new ByteArrayInputStream(bytesRead);
     }
 
-    private void internalWriteBlob(String blobName, InputStream fromStream, boolean failIfAlreadyExists) throws IOException {
+    private void internalWriteBlob(String blobName, InputStream fromStream, long blobSize, boolean failIfAlreadyExists) throws IOException {
         final String objectName = buildKey(blobName);
         try {
             IOException exception = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
                 try {
+                    if (fromStream.markSupported()){
+                        fromStream.mark((int)blobSize);
+                    }
+
                     return SwiftPerms.execThrows(() -> {
                         StoredObject object = blobStore.getContainer().getObject(objectName);
 
@@ -454,12 +459,25 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                             return new FileAlreadyExistsException("object [" + objectName + "] already exists, cannot overwrite");
                         }
 
-                        object.uploadObject(fromStream);
+                        UploadInstructions instructions = new UploadInstructions(fromStream);
+
+                        if (fromStream.markSupported()){
+                            String dataEtag = DigestUtils.md5Hex(fromStream);
+                            instructions.setMd5(dataEtag);
+                            fromStream.reset();
+                        }
+
+                        object.uploadObject(instructions);
                         return null;
                     });
                 }
                 catch (Exception e) {
                     logger.warn("cannot write object [" + objectName + "]", e);
+
+                    if (fromStream.markSupported()){
+                        fromStream.reset();
+                    }
+
                     throw e;
                 }
             });
