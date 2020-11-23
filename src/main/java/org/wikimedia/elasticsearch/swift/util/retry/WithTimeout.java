@@ -26,6 +26,10 @@ public interface WithTimeout {
 
     void retry(long interval, long timeout, TimeUnit timeUnit, Runnable runnable) throws Exception;
 
+    <T> T timeout(long timeout, TimeUnit timeUnit, Callable<T> callable) throws Exception;
+
+    void timeout(long timeout, TimeUnit timeUnit, Runnable runnable) throws Exception;
+
     class Factory {
         public WithTimeout from(ThreadPool threadPool){
             if (threadPool == null){

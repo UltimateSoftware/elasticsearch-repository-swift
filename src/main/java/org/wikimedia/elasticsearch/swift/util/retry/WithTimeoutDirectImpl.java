@@ -32,4 +32,14 @@ class WithTimeoutDirectImpl implements WithTimeout {
     public void retry(long interval, long timeout, TimeUnit timeUnit, Runnable runnable) {
         runnable.run();
     }
+
+    @Override
+    public <T> T timeout(long timeout, TimeUnit timeUnit, Callable<T> callable) throws Exception {
+        return callable.call();
+    }
+
+    @Override
+    public void timeout(long timeout, TimeUnit timeUnit, Runnable runnable) {
+        runnable.run();
+    }
 }

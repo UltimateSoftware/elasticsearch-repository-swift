@@ -35,8 +35,7 @@ class WithTimeoutExecutorImpl implements WithTimeout {
     public <T> T retry(long interval, long timeout, TimeUnit timeUnit, Callable<T> callable)
             throws InterruptedException, ExecutionException, TimeoutException {
         Future<T> task = executorService.submit(() -> internalRetry(interval, timeout, timeUnit, callable));
-        T result = task.get(timeout, timeUnit);
-        return result;
+        return task.get(timeout, timeUnit);
     }
 
     @Override
@@ -44,6 +43,21 @@ class WithTimeoutExecutorImpl implements WithTimeout {
             throws InterruptedException, ExecutionException, TimeoutException {
         Future<Void> task = executorService.submit(() -> internalRetry(interval, timeout, timeUnit, () -> {runnable.run();
                                                                                                            return null;}));
+        task.get(timeout, timeUnit);
+    }
+
+    @Override
+    public <T> T timeout(long timeout, TimeUnit timeUnit, Callable<T> callable) throws Exception {
+        Future<T> task = executorService.submit(callable);
+        return task.get(timeout, timeUnit);
+    }
+
+    @Override
+    public void timeout(long timeout, TimeUnit timeUnit, Runnable runnable) throws Exception {
+        Future<Void> task = executorService.submit(() -> {
+            runnable.run();
+            return null;
+        });
         task.get(timeout, timeUnit);
     }
 
@@ -61,6 +75,7 @@ class WithTimeoutExecutorImpl implements WithTimeout {
                 throw e;
             }
             catch (Exception e) {
+                //noinspection BusyWait
                 Thread.sleep(sleepMillis, sleepNanos);
             }
         }
