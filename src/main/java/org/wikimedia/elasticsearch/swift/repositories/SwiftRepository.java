@@ -102,6 +102,10 @@ public class SwiftRepository extends BlobStoreRepository {
                 10,
                 Setting.Property.NodeScope);
 
+        Setting<Integer> RETRY_COUNT_SETTING = Setting.intSetting("repository_swift.retry_count",
+                3,
+                Setting.Property.NodeScope);
+
         Setting<Boolean> ALLOW_CONCURRENT_IO_SETTING = Setting.boolSetting("repository_swift.allow_concurrent_io",
                 true,
                 Setting.Property.NodeScope);

@@ -73,6 +73,7 @@ public class SwiftRepositoryPlugin extends Plugin implements RepositoryPlugin {
                              SwiftRepository.Swift.SNAPSHOT_TIMEOUT_MIN_SETTING,
                              SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING,
                              SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING,
+                             SwiftRepository.Swift.RETRY_COUNT_SETTING,
                              SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING,
                              SwiftRepository.Swift.STREAM_READ_SETTING,
                              SwiftRepository.Swift.STREAM_WRITE_SETTING);
