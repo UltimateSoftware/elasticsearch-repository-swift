@@ -75,6 +75,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
     private final boolean blobExistsCheckAllowed;
     private final int retryIntervalS;
+    private final int retryCount;
     private final int shortOperationTimeoutS;
     private final boolean allowConcurrentIO;
     private final boolean streamRead;
@@ -108,6 +109,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         boolean minimizeBlobExistsChecks = SwiftRepository.Swift.MINIMIZE_BLOB_EXISTS_CHECKS_SETTING.get(envSettings);
         blobExistsCheckAllowed = pathString.isEmpty() || !minimizeBlobExistsChecks;
         retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
+        retryCount = SwiftRepository.Swift.RETRY_COUNT_SETTING.get(envSettings);
         shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
         streamRead = SwiftRepository.Swift.STREAM_READ_SETTING.get(envSettings);
         streamWrite = SwiftRepository.Swift.STREAM_WRITE_SETTING.get(envSettings);
@@ -336,50 +338,25 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         String objectName = buildKey(blobName);
 
         try {
-            ObjectInfo object = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () ->
-                SwiftPerms.execThrows(() -> {
-                    try {
-                        StoredObject storedObject = blobStore.getContainer().getObject(objectName);
-                        ObjectInfo objectInfo = new ObjectInfo();
-                        objectInfo.stream = storedObject.downloadObjectAsInputStream();
-                        objectInfo.size = storedObject.getContentLength();
-                        objectInfo.tag = storedObject.getEtag();
-                        return objectInfo;
-                    } catch (NotFoundException e) {
-                        // this conversion is necessary for tests to pass
-                        String message = "cannot read object, it does not exist [" + objectName + "]";
-                        logger.warn(message);
-                        NoSuchFileException e2 = new NoSuchFileException(message);
-                        e2.initCause(e);
-                        throw e2;
-                    }
-                    catch (Exception e){
-                        logger.warn("cannot read object [" + objectName + "]", e);
-                        throw e;
-                    }
-                }));
+            return withTimeout().retry(retryIntervalS, TimeUnit.SECONDS, retryCount, () -> {
+                try {
+                    ObjectInfo object = getObjectInfo(objectName); //retries internally
 
-            if (streamRead) {
-                if (logger.isDebugEnabled()){
-                    logger.debug("wrapping object in unbuffered stream [" + objectName + "], size=[" + object.size +
-                                 "], md5=[" + object.tag + "]");
+                    if (streamRead) {
+                        return wrapObjectStream(objectName, object);
+                    }
+
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("reading object into memory [" + objectName + "], size=[" + object.size + "]");
+                    }
+
+                    // I/O operations are timed. May throw on hash mismatch
+                    return objectToReentrantStream(objectName, object.stream, object.size, object.tag);
                 }
-                return new InputStreamWrapperWithDataHash(objectName, object.stream, object.tag){
-                    @Override
-                    public int innerRead() {
-                        try {
-                            return withTimeout().timeout(shortOperationTimeoutS, TimeUnit.SECONDS, super::innerRead);
-                        } catch (Exception e) {
-                            throw new BlobStoreException("failure reading from [" + objectName + "]", e);
-                        }
-                    }
-                };
-            }
-
-            if (logger.isDebugEnabled()){
-                logger.debug("reading object into memory [" + objectName + "], size=[" + object.size + "]");
-            }
-            return objectToReentrantStream(objectName, object.stream, object.size, object.tag);
+                catch(Exception e){
+                    logger.warn("failed to read object [" + objectName + "]", e);
+                    throw e;
+                }});
         }
         catch (IOException | RuntimeException e){
             throw e;
@@ -404,7 +381,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                           boolean failIfAlreadyExists) throws IOException {
         if (executor != null && allowConcurrentIO && !streamWrite) {
             // async execution races against the InputStream closed in the caller. Read all data locally.
-            InputStream capturedStream = streamToReentrantStream(blobName, in, blobSize, true, false);
+            InputStream capturedStream = streamToReentrantStream(in, blobSize, true, false);
 
             Future<Void> task = executor.submit(() -> {
                 internalWriteBlob(blobName, capturedStream, blobSize, failIfAlreadyExists);
@@ -418,6 +395,52 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         internalWriteBlob(blobName, in, blobSize, failIfAlreadyExists);
     }
 
+    /**
+     * Obtain metadata for named object, with retries and timeout
+     * @param objectName object name
+     * @return object metadata from Swift
+     * @throws Exception on timeout, I/O errors
+     */
+    private ObjectInfo getObjectInfo(String objectName) throws Exception{
+        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> SwiftPerms.execThrows(() -> {
+            try {
+                StoredObject storedObject = blobStore.getContainer().getObject(objectName);
+                ObjectInfo objectInfo = new ObjectInfo();
+                objectInfo.stream = storedObject.downloadObjectAsInputStream();
+                objectInfo.size = storedObject.getContentLength();
+                objectInfo.tag = storedObject.getEtag();
+                return objectInfo;
+            } catch (NotFoundException e) {
+                // this conversion is necessary for tests to pass
+                String message = "cannot read object, it does not exist [" + objectName + "]";
+                logger.warn(message);
+                NoSuchFileException e2 = new NoSuchFileException(message);
+                e2.initCause(e);
+                throw e2;
+            }
+            catch (Exception e){
+                logger.warn("cannot read object [" + objectName + "]", e);
+                throw e;
+            }
+        }));
+    }
+
+    private InputStreamWrapperWithDataHash wrapObjectStream(String objectName, ObjectInfo object) {
+        if (logger.isDebugEnabled()){
+            logger.debug("wrapping object in unbuffered stream [" + objectName + "], size=[" + object.size +
+                    "], md5=[" + object.tag + "]");
+        }
+        return new InputStreamWrapperWithDataHash(objectName, object.stream, object.tag){
+            @Override
+            public int innerRead() {
+                try {
+                    return withTimeout().timeout(shortOperationTimeoutS, TimeUnit.SECONDS, super::innerRead);
+                } catch (Exception e) {
+                    throw new BlobStoreException("failure reading from [" + objectName + "]", e);
+                }
+            }
+        };
+    }
 
     /**
      * Read object entirely into memory and check its etag. Elementary read operations are timed.
@@ -432,7 +455,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                                                 InputStream rawInputStream,
                                                 long size,
                                                 String objectEtag) throws IOException {
-        InputStream objectStream = streamToReentrantStream(objectName, rawInputStream, size, false, true);
+        InputStream objectStream = streamToReentrantStream(rawInputStream, size, false, true);
         String dataEtag = DigestUtils.md5Hex(objectStream);
 
         if (dataEtag.equalsIgnoreCase(objectEtag)) {
@@ -443,13 +466,12 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         String message = "cannot read object [" + objectName + "]: server etag [" + objectEtag +
                 "] does not match calculated etag [" + dataEtag + "]";
         logger.warn(message);
-        throw new IOException(message);
+        throw new BlobStoreException(message);
     }
 
     /**
      * If the original stream was re-entrant, do nothing; otherwise, read blob entirely into memory.
      *
-     * @param objectName object path
      * @param in server input stream
      * @param sizeHint size hint, do not trust it
      * @param forceRead force reading into memory
@@ -457,8 +479,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      * @return re-entrant stream holding the blob
      * @throws IOException on I/O error
      */
-    private InputStream streamToReentrantStream(String objectName,
-                                                InputStream in,
+    private InputStream streamToReentrantStream(InputStream in,
                                                 long sizeHint,
                                                 boolean forceRead,
                                                 boolean useReadTimeout) throws IOException {
@@ -470,23 +491,20 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         final byte[] buffer = new byte[bufferSize];
         ByteArrayOutputStream baos = new ByteArrayOutputStream(sizeHint > 0 ? (int) sizeHint : bufferSize) {
             @Override
-            public synchronized byte[] toByteArray() {
+            public byte[] toByteArray() {
                 return buf;
             }
         };
 
-        int read;
-        while ((read = useReadTimeout ? readWithTimeout(in, buffer) : in.read(buffer)) != -1) {
+        while (true) {
+            int read = useReadTimeout ? readWithTimeout(in, buffer) : in.read(buffer);
+            if (read == -1){
+                break;
+            }
             baos.write(buffer, 0, read);
         }
 
-        final byte[] bytesRead = baos.toByteArray();
-
-        if (sizeHint > 0 && bytesRead.length > sizeHint){
-            logger.warn("Exceeded expected allocation : [" + objectName + "], read [" + bytesRead.length +
-                    "] bytes instead of [" + sizeHint + "]");
-        }
-        return new ByteArrayInputStream(bytesRead);
+        return new ByteArrayInputStream(baos.toByteArray());
     }
 
     private int readWithTimeout(InputStream in, final byte[] buffer) throws IOException {
