@@ -146,21 +146,28 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     }
 
     private DeleteResult internalDeleteBlob(String blobName) throws Exception {
+        final String objectName = buildKey(blobName);
+
         return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
             try {
                 return SwiftPerms.execThrows(() -> {
-                    StoredObject object = blobStore.getContainer().getObject(buildKey(blobName));
+                    StoredObject object = blobStore.getContainer().getObject(objectName);
                     long contentLength = object.getContentLength();
                     object.delete();
                     return new DeleteResult(1, contentLength);
                 });
             }
             catch (NotFoundException e) {
-                String message = "Blob [" + buildKey(blobName) + "] cannot be deleted";
+                // this conversion is necessary for tests to run
+                String message = "object cannot be deleted, it does not exist [" + objectName + "]";
                 logger.warn(message);
                 NoSuchFileException e2 = new NoSuchFileException(message);
                 e2.initCause(e);
                 throw e2;
+            }
+            catch (Exception e) {
+                logger.warn("object cannot be deleted [" + objectName + "]", e);
+                throw e;
             }
         });
     }
@@ -340,7 +347,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                         return objectInfo;
                     } catch (NotFoundException e) {
                         // this conversion is necessary for tests to pass
-                        String message = "cannot read object [" + objectName + "]";
+                        String message = "cannot read object, it does not exist [" + objectName + "]";
                         logger.warn(message);
                         NoSuchFileException e2 = new NoSuchFileException(message);
                         e2.initCause(e);
@@ -348,8 +355,18 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                     }
                 }));
 
-            return streamRead ? new InputStreamWrapperWithDataHash(objectName, object.stream, object.tag)
-                              : objectToReentrantStream(objectName, object.stream, object.size, object.tag);
+            if (streamRead) {
+                if (logger.isDebugEnabled()){
+                    logger.debug("object wrapped in unbuffered stream [" + objectName + "], size=[" + object.size +
+                                 "], md5=[" + object.tag + "]");
+                }
+                return new InputStreamWrapperWithDataHash(objectName, object.stream, object.tag);
+            }
+
+            if (logger.isDebugEnabled()){
+                logger.debug("object wrapped in memory buffer [" + objectName + "], size=[" + object.size + "]");
+            }
+            return objectToReentrantStream(objectName, object.stream, object.size, object.tag);
         }
         catch (IOException | RuntimeException e){
             throw e;
@@ -433,10 +450,8 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                                                 boolean forceRead,
                                                 boolean useReadTimeout) throws IOException {
         if (!forceRead && in.markSupported()) {
-            logger.debug("Reusing reentrant stream of class [" + in.getClass().getName() + "]");
             return in;
         }
-        logger.debug("Reading object ["+ objectName +"], expected size ["+ sizeHint + "] bytes");
 
         final int bufferSize = (int) blobStore.getBufferSizeInBytes();
         final byte[] buffer = new byte[bufferSize];
@@ -499,6 +514,10 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                         }
 
                         object.uploadObject(instructions);
+                        if (logger.isDebugEnabled()){
+                            logger.debug("uploaded object [" + objectName + "], size=[" + blobSize + "], md5=[" +
+                                         instructions.getMd5() + "]");
+                        }
                         return null;
                     });
                 }
