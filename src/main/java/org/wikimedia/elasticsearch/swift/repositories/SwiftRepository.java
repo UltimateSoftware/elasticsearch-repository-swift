@@ -98,6 +98,10 @@ public class SwiftRepository extends BlobStoreRepository {
                 30,
                 Setting.Property.NodeScope);
 
+        Setting<Integer> LONG_OPERATION_TIMEOUT_S_SETTING = Setting.intSetting("repository_swift.long_operation_timeout_s",
+                600,
+                Setting.Property.NodeScope);
+
         Setting<Integer> RETRY_INTERVAL_S_SETTING = Setting.intSetting("repository_swift.retry_interval_s",
                 10,
                 Setting.Property.NodeScope);

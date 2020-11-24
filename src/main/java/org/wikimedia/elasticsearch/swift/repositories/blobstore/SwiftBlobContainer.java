@@ -77,6 +77,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     private final int retryIntervalS;
     private final int retryCount;
     private final int shortOperationTimeoutS;
+    private final int longOperationTimeoutS;
     private final boolean allowConcurrentIO;
     private final boolean streamRead;
     private final boolean streamWrite;
@@ -111,6 +112,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
         retryCount = SwiftRepository.Swift.RETRY_COUNT_SETTING.get(envSettings);
         shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
+        longOperationTimeoutS = SwiftRepository.Swift.LONG_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
         streamRead = SwiftRepository.Swift.STREAM_READ_SETTING.get(envSettings);
         streamWrite = SwiftRepository.Swift.STREAM_WRITE_SETTING.get(envSettings);
     }
@@ -150,14 +152,12 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     private DeleteResult internalDeleteBlob(String blobName) throws Exception {
         final String objectName = buildKey(blobName);
 
-        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
+        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> SwiftPerms.execThrows(() -> {
             try {
-                return SwiftPerms.execThrows(() -> {
-                    StoredObject object = blobStore.getContainer().getObject(objectName);
-                    long contentLength = object.getContentLength();
-                    object.delete();
-                    return new DeleteResult(1, contentLength);
-                });
+                StoredObject object = blobStore.getContainer().getObject(objectName);
+                long contentLength = object.getContentLength();
+                object.delete();
+                return new DeleteResult(1, contentLength);
             }
             catch (NotFoundException e) {
                 // this conversion is necessary for tests to run
@@ -171,7 +171,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                 logger.warn("object cannot be deleted [" + objectName + "]", e);
                 throw e;
             }
-        });
+        }));
     }
 
     @Override
@@ -179,18 +179,16 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         try {
             Container container = blobStore.getContainer();
             ContainerPaginationMap containerPaginationMap = new ContainerPaginationMap(container, keyPath, container.getMaxPageSize());
-            Collection<StoredObject> containerObjects = withTimeout().retry(retryIntervalS,
-                shortOperationTimeoutS,
-                TimeUnit.SECONDS,
-                () -> {
+            Collection<StoredObject> containerObjects = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS,
+                () -> SwiftPerms.exec( () -> {
                     try {
-                        return SwiftPerms.exec(containerPaginationMap::listAllItems);
+                        return containerPaginationMap.listAllItems();
                     }
                     catch (Exception e) {
                         logger.warn("cannot list items in [" + keyPath + "]", e);
                         throw e;
                     }
-                });
+                }));
 
             DeleteResult results = DeleteResult.ZERO;
             ArrayList<Exception> errors = new ArrayList<>();
@@ -229,33 +227,32 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     public Map<String, BlobMetaData> listBlobsByPrefix(@Nullable final String blobNamePrefix) throws IOException {
         String directoryKey = blobNamePrefix == null ? keyPath : buildKey(blobNamePrefix);
         try {
-            Collection<DirectoryOrObject> directoryList = withTimeout().retry(retryIntervalS,
-                shortOperationTimeoutS,
-                TimeUnit.SECONDS,
-                () -> {
+            Collection<DirectoryOrObject> directoryList = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS,
+                () -> SwiftPerms.execThrows(() -> {
                     try {
-                        return SwiftPerms.execThrows(() -> blobStore.getContainer().listDirectory(new Directory(directoryKey, '/')));
+                        return blobStore.getContainer().listDirectory(new Directory(directoryKey, '/'));
                     }
                     catch (Exception e) {
                         logger.warn("Cannot list blobs in directory [" + directoryKey + "]", e);
                         throw e;
                     }
-                });
+                }));
 
             HashMap<String, PlainBlobMetaData> blobMap = new HashMap<>();
 
             for (DirectoryOrObject obj: directoryList) {
                 if (obj.isObject()) {
                     String name = obj.getName().substring(keyPath.length());
-                    Long length = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
-                        try {
-                            return SwiftPerms.exec(() -> obj.getAsObject().getContentLength());
-                        }
-                        catch (Exception e) {
-                            logger.warn("Cannot get object [" + obj.getName() + "]", e);
-                            throw e;
-                        }
-                    });
+                    Long length = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS,
+                        () -> SwiftPerms.exec(() -> {
+                            try {
+                                return obj.getAsObject().getContentLength();
+                            }
+                            catch (Exception e) {
+                                logger.warn("Cannot get object [" + obj.getName() + "]", e);
+                                throw e;
+                            }
+                        }));
                     PlainBlobMetaData meta = new PlainBlobMetaData(name, length);
                     blobMap.put(name, meta);
                 }
@@ -283,15 +280,15 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     public Map<String, BlobContainer> children() throws IOException{
         Collection<DirectoryOrObject> objects;
         try {
-            objects = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
+            objects = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> SwiftPerms.execThrows(() -> {
                 try {
-                    return SwiftPerms.execThrows(() -> blobStore.getContainer().listDirectory(new Directory(keyPath, '/')));
+                    return blobStore.getContainer().listDirectory(new Directory(keyPath, '/'));
                 }
                 catch (Exception e) {
                     logger.warn("cannot list children for [" + keyPath + "]", e);
                     throw e;
                 }
-            });
+            }));
         }
         catch (IOException | RuntimeException e) {
             throw e;
@@ -344,10 +341,6 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
                     if (streamRead) {
                         return wrapObjectStream(objectName, object);
-                    }
-
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("reading object into memory [" + objectName + "], size=[" + object.size + "]");
                     }
 
                     // I/O operations are timed. May throw on hash mismatch
@@ -460,6 +453,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
         if (dataEtag.equalsIgnoreCase(objectEtag)) {
             objectStream.reset();
+            logger.debug("read object into memory [" + objectName + "], size=[" + size + "]");
             return objectStream;
         }
 
@@ -521,46 +515,46 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
     private void internalWriteBlob(String blobName, InputStream fromStream, long blobSize, boolean failIfAlreadyExists) throws IOException {
         final String objectName = buildKey(blobName);
+
+        if (fromStream.markSupported()){
+            fromStream.mark((int)blobSize);
+        }
+
         try {
-            IOException exception = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
-                try {
-                    if (fromStream.markSupported()){
-                        fromStream.mark((int)blobSize);
-                    }
+            IOException exception = withTimeout().retry(retryIntervalS, longOperationTimeoutS, TimeUnit.SECONDS,
+                    () -> SwiftPerms.execThrows(() -> {
+                        try {
+                            StoredObject object = blobStore.getContainer().getObject(objectName);
 
-                    return SwiftPerms.execThrows(() -> {
-                        StoredObject object = blobStore.getContainer().getObject(objectName);
+                            if (failIfAlreadyExists && blobExistsCheckAllowed && object.exists()) {
+                                return new FileAlreadyExistsException("object [" + objectName + "] already exists, cannot overwrite");
+                            }
 
-                        if (failIfAlreadyExists && blobExistsCheckAllowed && object.exists()) {
-                            return new FileAlreadyExistsException("object [" + objectName + "] already exists, cannot overwrite");
+                            UploadInstructions instructions = new UploadInstructions(fromStream);
+
+                            if (fromStream.markSupported()){
+                                String dataEtag = DigestUtils.md5Hex(fromStream);
+                                instructions.setMd5(dataEtag);
+                                fromStream.reset();
+                            }
+
+                            object.uploadObject(instructions);
+                            if (logger.isDebugEnabled()){
+                                logger.debug("uploaded object [" + objectName + "], size=[" + blobSize + "], md5=[" +
+                                             instructions.getMd5() + "]");
+                            }
+                            return null;
                         }
+                        catch (Exception e) {
+                            logger.warn("cannot write object [" + objectName + "]", e);
 
-                        UploadInstructions instructions = new UploadInstructions(fromStream);
+                            if (fromStream.markSupported()){
+                                fromStream.reset();
+                            }
 
-                        if (fromStream.markSupported()){
-                            String dataEtag = DigestUtils.md5Hex(fromStream);
-                            instructions.setMd5(dataEtag);
-                            fromStream.reset();
+                            throw e;
                         }
-
-                        object.uploadObject(instructions);
-                        if (logger.isDebugEnabled()){
-                            logger.debug("uploaded object [" + objectName + "], size=[" + blobSize + "], md5=[" +
-                                         instructions.getMd5() + "]");
-                        }
-                        return null;
-                    });
-                }
-                catch (Exception e) {
-                    logger.warn("cannot write object [" + objectName + "]", e);
-
-                    if (fromStream.markSupported()){
-                        fromStream.reset();
-                    }
-
-                    throw e;
-                }
-            });
+                    }));
 
             if (exception != null) {
                 throw exception;

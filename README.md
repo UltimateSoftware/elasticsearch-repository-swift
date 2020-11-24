@@ -53,6 +53,7 @@ Plugin settings to be placed in elasticsearch YAML configuration. Keep defaults,
 | repository_swift.retry_interval_s            | interval in seconds for retry-until-success-or-timeout pattern in seconds (default 10 s)
 | repository_swift.retry_count                 | number of attempts for retries where timing is impractical (default 3 times)
 | repository_swift.short_operation_timeout_s   | timeout for short operations (like writing a small blob, deleting, or listing) in seconds (default 30 s)
+| repository_swift.long_operation_timeout_s    | timeout for long operations (like writing of multi-Gig data stream) in seconds (default 600 s)
 | repository_swift.snapshot_timeout_min        | timeout of taking a snapshot in minutes (default 360 min)
 | repository_swift.stream_read                 | true (default) or false. Reduce memory footprint on restore, at the expense of not being able to retry reads on failure.
 | repository_swift.stream_write                | true or false (default). Reduce memory footprint on snapshot, at the expense of not writing concurrently.
