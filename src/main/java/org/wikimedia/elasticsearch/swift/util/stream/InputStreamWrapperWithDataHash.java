@@ -22,14 +22,12 @@ import org.apache.commons.codec.digest.DigestUtils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;
-import java.util.function.BiFunction;
 
 public class InputStreamWrapperWithDataHash extends InputStream {
     private final String objectName;
     private final InputStream innerStream;
     private final String dataHash;
     private String actualDataHash;
-    private final BiFunction<String, String, Void> onHashMismatch;
     private final MessageDigest digest = DigestUtils.getMd5Digest();
     private boolean isEof = false;
 
@@ -37,20 +35,11 @@ public class InputStreamWrapperWithDataHash extends InputStream {
         this.objectName = objectName;
         this.innerStream = innerStream;
         this.dataHash = dataHash;
-        onHashMismatch = null;
-    }
-
-    public InputStreamWrapperWithDataHash(String objectName, InputStream innerStream, String dataHash,
-                                          BiFunction<String, String, Void> onHashMismatch) {
-        this.objectName = objectName;
-        this.innerStream = innerStream;
-        this.dataHash = dataHash;
-        this.onHashMismatch = onHashMismatch;
     }
 
     @Override
     public int read() throws IOException {
-        final int result = innerStream.read();
+        final int result = innerRead();
         if (result != -1){
             digest.update((byte) result);
             return result;
@@ -62,16 +51,15 @@ public class InputStreamWrapperWithDataHash extends InputStream {
         }
 
         if (!dataHash.equalsIgnoreCase(actualDataHash)){
-            if (onHashMismatch != null){
-                onHashMismatch.apply(dataHash, actualDataHash);
-            }
-            else {
-                throw new IOException("Mismatched hash on stream for [" + objectName + "], expected [" + dataHash +
-                                      "], actual [" + actualDataHash + "]");
-            }
+            throw new IOException("Mismatched hash on stream for [" + objectName + "], expected [" + dataHash +
+                                  "], actual [" + actualDataHash + "]");
         }
 
         return result;
+    }
+
+    public int innerRead() throws IOException {
+        return innerStream.read();
     }
 
     @Override

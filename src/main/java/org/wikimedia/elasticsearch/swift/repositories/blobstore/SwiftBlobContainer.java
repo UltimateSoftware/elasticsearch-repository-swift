@@ -353,18 +353,31 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                         e2.initCause(e);
                         throw e2;
                     }
+                    catch (Exception e){
+                        logger.warn("cannot read object [" + objectName + "]", e);
+                        throw e;
+                    }
                 }));
 
             if (streamRead) {
                 if (logger.isDebugEnabled()){
-                    logger.debug("object wrapped in unbuffered stream [" + objectName + "], size=[" + object.size +
+                    logger.debug("wrapping object in unbuffered stream [" + objectName + "], size=[" + object.size +
                                  "], md5=[" + object.tag + "]");
                 }
-                return new InputStreamWrapperWithDataHash(objectName, object.stream, object.tag);
+                return new InputStreamWrapperWithDataHash(objectName, object.stream, object.tag){
+                    @Override
+                    public int innerRead() {
+                        try {
+                            return withTimeout().timeout(shortOperationTimeoutS, TimeUnit.SECONDS, super::innerRead);
+                        } catch (Exception e) {
+                            throw new BlobStoreException("failure reading from [" + objectName + "]", e);
+                        }
+                    }
+                };
             }
 
             if (logger.isDebugEnabled()){
-                logger.debug("object wrapped in memory buffer [" + objectName + "], size=[" + object.size + "]");
+                logger.debug("reading object into memory [" + objectName + "], size=[" + object.size + "]");
             }
             return objectToReentrantStream(objectName, object.stream, object.size, object.tag);
         }
@@ -478,8 +491,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
     private int readWithTimeout(InputStream in, final byte[] buffer) throws IOException {
         try {
-            return withTimeout().timeout(shortOperationTimeoutS, TimeUnit.SECONDS, () ->
-                    SwiftPerms.execThrows(() -> in.read(buffer)));
+            return withTimeout().timeout(shortOperationTimeoutS, TimeUnit.SECONDS, () -> in.read(buffer));
         }
         catch (IOException e){
             throw e;
