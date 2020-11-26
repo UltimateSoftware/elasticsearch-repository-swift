@@ -425,9 +425,9 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         }
         return new InputStreamWrapperWithDataHash(objectName, object.stream, object.tag){
             @Override
-            protected int innerRead(byte[] b, int off, int len) {
+            protected int innerRead(byte[] b) {
                 try {
-                    return withTimeout().timeout(shortOperationTimeoutS, TimeUnit.SECONDS, () -> super.innerRead(b, off, len));
+                    return withTimeout().timeout(shortOperationTimeoutS, TimeUnit.SECONDS, () -> super.innerRead(b));
                 } catch (Exception e) {
                     throw new BlobStoreException("failure reading from [" + objectName + "]", e);
                 }

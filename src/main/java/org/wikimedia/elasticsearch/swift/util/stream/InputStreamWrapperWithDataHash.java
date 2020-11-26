@@ -38,7 +38,7 @@ public class InputStreamWrapperWithDataHash extends InputStream {
     }
 
     /**
-     * Elasticsearch favors this method
+     * Elasticsearch favors this method. Route it through read(byte[]), due to latter implemented in JOSS.
      * @param b buffer
      * @param off offset in b
      * @param len max length to read
@@ -47,9 +47,23 @@ public class InputStreamWrapperWithDataHash extends InputStream {
      */
     @Override
     public int read(byte[] b, int off, int len) throws IOException {
-        final int bytesRead = innerRead(b, off, len);
+        if (off == 0 && b.length == len){
+            return read(b);
+        }
+        return super.read(b, off, len); // this is never actually called
+    }
+
+    /**
+     * This method maps into JOSS implementation, which is lacking read(byte[], int, int) method implementation.
+     * @param b byte buffer to read into
+     * @return bytes read, -1 on EOF
+     * @throws IOException on I/O error or md5 mismatch
+     */
+    @Override
+    public int read(byte[] b) throws IOException {
+        final int bytesRead = innerRead(b);
         if (bytesRead != -1){
-            digest.update(b, off, bytesRead);
+            digest.update(b, 0, bytesRead);
             return bytesRead;
         }
 
@@ -68,7 +82,7 @@ public class InputStreamWrapperWithDataHash extends InputStream {
 
     /**
      * All other read methods in <code>InputStream</code> default to abstract read().
-     * DO NOT call innerRead() here, instead route the logic through read(byte[], int, int).
+     * Do NOT call innerRead() here, instead route the logic through read(byte[]).
      * This method does not appear to be called.
      * @return byte read or -1 on EOF
      * @throws IOException on I/O error or md5 mismatch
@@ -77,21 +91,19 @@ public class InputStreamWrapperWithDataHash extends InputStream {
     @Override
     public int read() throws IOException {
         byte[] b=new byte[1];
-        int result = read(b, 0, 1);
-        return result == -1 ? -1 : b[0];
+        int result = read(b);
+        return result == -1 ? -1 : b[0]&0xff;
     }
 
     /**
      * Invoke read(byte[], int, int) on inner stream. DO NOT implement overloads.
      * @param b byte buffer
-     * @param off offset in buffer
-     * @param len max length to read
      * @return bytes actually read, or -1 on EOF
      * @throws IOException on I/O error
-     * @see     InputStream#read(byte[], int, int)
+     * @see     InputStream#read(byte[])
      */
-    protected int innerRead(byte[] b, int off, int len) throws IOException {
-        return innerStream.read(b, off, len);
+    protected int innerRead(byte[] b) throws IOException {
+        return innerStream.read(b);
     }
 
     @Override
