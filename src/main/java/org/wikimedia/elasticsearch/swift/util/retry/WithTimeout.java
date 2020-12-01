@@ -24,7 +24,9 @@ import java.util.concurrent.TimeUnit;
 public interface WithTimeout {
     <T> T retry(long interval, long timeout, TimeUnit timeUnit, Callable<T> callable) throws Exception;
 
-    void retry(long interval, long timeout, TimeUnit timeUnit, Runnable runnable) throws Exception;
+    <T> T retry(long interval, TimeUnit timeUnit, int attempts, Callable<T> callable) throws Exception;
+
+    <T> T timeout(long timeout, TimeUnit timeUnit, Callable<T> callable) throws Exception;
 
     class Factory {
         public WithTimeout from(ThreadPool threadPool){

@@ -98,12 +98,28 @@ public class SwiftRepository extends BlobStoreRepository {
                 30,
                 Setting.Property.NodeScope);
 
+        Setting<Integer> LONG_OPERATION_TIMEOUT_S_SETTING = Setting.intSetting("repository_swift.long_operation_timeout_s",
+                600,
+                Setting.Property.NodeScope);
+
         Setting<Integer> RETRY_INTERVAL_S_SETTING = Setting.intSetting("repository_swift.retry_interval_s",
                 10,
                 Setting.Property.NodeScope);
 
+        Setting<Integer> RETRY_COUNT_SETTING = Setting.intSetting("repository_swift.retry_count",
+                3,
+                Setting.Property.NodeScope);
+
         Setting<Boolean> ALLOW_CONCURRENT_IO_SETTING = Setting.boolSetting("repository_swift.allow_concurrent_io",
                 true,
+                Setting.Property.NodeScope);
+
+        Setting<Boolean> STREAM_READ_SETTING = Setting.boolSetting("repository_swift.stream_read",
+                true,
+                Setting.Property.NodeScope);
+
+        Setting<Boolean> STREAM_WRITE_SETTING = Setting.boolSetting("repository_swift.stream_write",
+                false,
                 Setting.Property.NodeScope);
     }
 
