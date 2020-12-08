@@ -17,14 +17,15 @@
 package org.wikimedia.elasticsearch.swift;
 
 import org.elasticsearch.common.settings.Setting;
-import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.plugins.RepositoryPlugin;
 import org.elasticsearch.repositories.Repository;
+import org.elasticsearch.threadpool.ThreadPool;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftService;
+import org.wikimedia.elasticsearch.swift.repositories.account.SwiftAccountFactoryImpl;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -35,26 +36,47 @@ import java.util.Map;
  * Our base plugin stuff.
  */
 public class SwiftRepositoryPlugin extends Plugin implements RepositoryPlugin {
-    // overridable for tests
-    protected SwiftService createStorageService(Settings settings) {
-        return new SwiftService(settings);
+    @Override
+    public Map<String, Repository.Factory> getRepositories(final Environment env,
+                                                           final NamedXContentRegistry registry,
+                                                           final ThreadPool threadPool) {
+        return Collections.singletonMap(SwiftRepository.TYPE, repositoryFactory(env, registry, threadPool));
     }
 
-    @Override
-    public Map<String, Repository.Factory> getRepositories(Environment env, NamedXContentRegistry namedXContentRegistry) {
-        return Collections.singletonMap(SwiftRepository.TYPE,
-                (metadata) -> new SwiftRepository(metadata, env.settings(), namedXContentRegistry, createStorageService(env.settings())));
+    // for testability
+    protected Repository.Factory repositoryFactory(final Environment env,
+                                                   final NamedXContentRegistry registry,
+                                                   final ThreadPool threadPool){
+        return metadata -> {
+            SwiftService swiftService = new SwiftService(env.settings(), threadPool);
+            SwiftAccountFactoryImpl accountFactory = new SwiftAccountFactoryImpl(swiftService);
+
+            return new SwiftRepository(metadata,
+                metadata.settings(),
+                env.settings(),
+                registry,
+                threadPool,
+                accountFactory);
+        };
     }
 
     @Override
     public List<String> getSettingsFilter() {
-        return Collections.singletonList(
-                SwiftRepository.Swift.PASSWORD_SETTING.getKey());
+        return Collections.singletonList(SwiftRepository.Swift.PASSWORD_SETTING.getKey());
     }
 
     @Override
     public List<Setting<?>> getSettings() {
         return Arrays.asList(SwiftRepository.Swift.MINIMIZE_BLOB_EXISTS_CHECKS_SETTING,
-                             SwiftRepository.Swift.ALLOW_CACHING_SETTING);
+                             SwiftRepository.Swift.ALLOW_CACHING_SETTING,
+                             SwiftRepository.Swift.DELETE_TIMEOUT_MIN_SETTING,
+                             SwiftRepository.Swift.SNAPSHOT_TIMEOUT_MIN_SETTING,
+                             SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING,
+                             SwiftRepository.Swift.LONG_OPERATION_TIMEOUT_S_SETTING,
+                             SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING,
+                             SwiftRepository.Swift.RETRY_COUNT_SETTING,
+                             SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING,
+                             SwiftRepository.Swift.STREAM_READ_SETTING,
+                             SwiftRepository.Swift.STREAM_WRITE_SETTING);
     }
 }

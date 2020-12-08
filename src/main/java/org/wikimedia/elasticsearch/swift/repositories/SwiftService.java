@@ -16,34 +16,57 @@
 
 package org.wikimedia.elasticsearch.swift.repositories;
 
+import org.apache.commons.lang.StringUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.common.component.AbstractLifecycleComponent;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.threadpool.ThreadPool;
 import org.javaswift.joss.client.factory.AccountConfig;
 import org.javaswift.joss.client.factory.AccountFactory;
 import org.javaswift.joss.client.factory.AuthenticationMethod;
-import org.javaswift.joss.exception.CommandException;
+import org.javaswift.joss.client.factory.AuthenticationMethodScope;
 import org.javaswift.joss.model.Account;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
+import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
+
+import java.util.concurrent.TimeUnit;
 
 public class SwiftService extends AbstractLifecycleComponent {
-    // The account we'll be connecting to Swift with
-    private Account swiftUser;
+    private static final String V3_AUTH_URL_SUFFIX = "/auth/tokens";
+
+    private static final Logger logger = LogManager.getLogger(SwiftService.class);
 
     private final boolean allowCaching;
+    private final WithTimeout.Factory withTimeoutFactory;
+    private final ThreadPool threadPool;
+    private final int retryIntervalS;
+    private final int shortOperationTimeoutS;
+    private final Boolean allowConcurrentIO;
+
 
     /**
      * Constructor
      * 
-     * @param settings
+     * @param envSettings
      *            Settings for our repository. Injected.
+     *
+     * @param threadPool for retry()
      */
     @Inject
-    public SwiftService(Settings settings) {
-        super(settings);
-        allowCaching = settings.getAsBoolean(SwiftRepository.Swift.ALLOW_CACHING_SETTING.getKey(),
-                                             true);
+    public SwiftService(Settings envSettings, ThreadPool threadPool) {
+        this.threadPool = threadPool;
+        allowCaching = SwiftRepository.Swift.ALLOW_CACHING_SETTING.get(envSettings);
+        withTimeoutFactory = new WithTimeout.Factory();
+        retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
+        shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
+        allowConcurrentIO = SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(envSettings);
+    }
+
+    private WithTimeout withTimeout() {
+        return withTimeoutFactory.from(this.threadPool != null && allowConcurrentIO ? this.threadPool : null);
     }
 
     /**
@@ -59,61 +82,103 @@ public class SwiftService extends AbstractLifecycleComponent {
      *            The preferred region set
      * @return swift Account
      */
-    public synchronized Account swiftBasic(String url, String username, String password, String preferredRegion) {
-        if (swiftUser != null) {
-            return swiftUser;
-        }
-
+    public Account swiftBasic(String url, String username, String password, String preferredRegion) {
         try {
             AccountConfig conf = getStandardConfig(url, username, password, AuthenticationMethod.BASIC,
                     preferredRegion);
-            swiftUser = createAccount(conf);
-        } catch (CommandException ce) {
+            return createAccount(conf);
+        }
+        catch (Exception ce) {
             throw new ElasticsearchException("Unable to authenticate to Swift Basic " + url + "/" + username +
-                    "/" + password, ce);
+                "/" + password, ce);
         }
-        return swiftUser;
     }
 
-    private Account createAccount(final AccountConfig conf) {
-        return SwiftPerms.exec(() -> new AccountFactory(conf).createAccount());
+    private Account createAccount(final AccountConfig conf) throws Exception {
+        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS,() -> {
+            try {
+                return SwiftPerms.exec(() -> new AccountFactory(conf).createAccount());
+            }
+            catch (Exception e) {
+                logger.warn("cannot authenticate", e);
+                throw e;
+            }
+        });
     }
 
-    public synchronized Account swiftKeyStone(String url, String username, String password, String tenantName,
-                                              String preferredRegion) {
-        if (swiftUser != null) {
-            return swiftUser;
-        }
-
+    public Account swiftKeyStone(String url,
+                                 String username,
+                                 String password,
+                                 String tenantName,
+                                 String preferredRegion) {
         try {
-            AccountConfig conf = getStandardConfig(url, username, password, AuthenticationMethod.KEYSTONE,
-                    preferredRegion);
+            AccountConfig conf = getStandardConfig(url,
+                username,
+                password,
+                AuthenticationMethod.KEYSTONE,
+                preferredRegion);
             conf.setTenantName(tenantName);
-            swiftUser = createAccount(conf);
-        } catch (CommandException ce) {
-            throw new ElasticsearchException(
-                    "Unable to authenticate to Swift Keystone " + url + "/" + username + "/" + password + "/"
-                            + tenantName, ce);
+            return createAccount(conf);
         }
-        return swiftUser;
+        catch (Exception ce) {
+            String msg = "Unable to authenticate to Swift Keystone " + url + "/" + username + "/" + password + "/" + tenantName;
+            throw new ElasticsearchException(msg, ce);
+        }
     }
 
-    public synchronized Account swiftTempAuth(String url, String username, String password, String preferredRegion) {
-        if (swiftUser != null) {
-            return swiftUser;
-        }
-
+    public Account swiftKeyStoneV3(String url,
+                                                String username,
+                                                String password,
+                                                String tenantName,
+                                                String domainName,
+                                                String preferredRegion) {
         try {
-            AccountConfig conf = getStandardConfig(url, username, password, AuthenticationMethod.TEMPAUTH,
-                    preferredRegion);
-            swiftUser = createAccount(conf);
-        } catch (CommandException ce) {
+            if (!url.endsWith(V3_AUTH_URL_SUFFIX)) {
+                url = StringUtils.chomp(url,"/") + V3_AUTH_URL_SUFFIX;
+            }
+
+            AccountConfig conf = getStandardConfig(url,
+                username,
+                password,
+                AuthenticationMethod.KEYSTONE_V3,
+                preferredRegion);
+
+            if (StringUtils.isNotEmpty(tenantName)) {
+                conf.setTenantName(tenantName);
+                conf.setAuthenticationMethodScope(AuthenticationMethodScope.PROJECT_NAME);
+            }
+            else if (StringUtils.isNotEmpty(domainName) && !"Default".equalsIgnoreCase(domainName)) {
+                conf.setDomain(domainName);
+                conf.setAuthenticationMethodScope(AuthenticationMethodScope.DOMAIN_NAME);
+            }
+
+            return createAccount(conf);
+        }
+        catch (Exception ce) {
+            String msg = "Unable to authenticate to Swift Keystone V3" + url + "/" + username + "/" + password + "/" +
+                tenantName + "/" + domainName;
+            throw new ElasticsearchException(msg, ce);
+        }
+    }
+
+    public Account swiftTempAuth(String url, String username, String password, String preferredRegion) {
+        try {
+            AccountConfig conf = getStandardConfig(url,
+                username,
+                password,
+                AuthenticationMethod.TEMPAUTH,
+                preferredRegion);
+            return createAccount(conf);
+        }
+        catch (Exception ce) {
             throw new ElasticsearchException("Unable to authenticate to Swift Temp", ce);
         }
-        return swiftUser;
     }
 
-    private AccountConfig getStandardConfig(String url, String username, String password, AuthenticationMethod method,
+    private AccountConfig getStandardConfig(String url,
+                                            String username,
+                                            String password,
+                                            AuthenticationMethod method,
                                             String preferredRegion) {
         AccountConfig conf = new AccountConfig();
         conf.setAuthUrl(url);
@@ -122,7 +187,11 @@ public class SwiftService extends AbstractLifecycleComponent {
         conf.setAuthenticationMethod(method);
         conf.setAllowContainerCaching(allowCaching);
         conf.setAllowCaching(allowCaching);
-        conf.setPreferredRegion(preferredRegion);
+
+        if (StringUtils.isNotEmpty(preferredRegion)) {
+            conf.setPreferredRegion(preferredRegion);
+        }
+
         return conf;
     }
 
