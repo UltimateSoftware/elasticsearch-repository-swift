@@ -50,7 +50,13 @@ public class InputStreamWrapperWithDataHash extends InputStream {
         if (off == 0 && b.length == len){
             return read(b);
         }
-        return super.read(b, off, len); // this is never actually called
+
+        byte[] buffer = new byte[Math.min(b.length-off, len)];
+        int bytesRead = read(buffer);
+        if (bytesRead > 0){
+            System.arraycopy(buffer, 0, b, off, bytesRead);
+        }
+        return bytesRead;
     }
 
     /**
