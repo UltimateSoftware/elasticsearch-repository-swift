@@ -18,6 +18,7 @@ package org.wikimedia.elasticsearch.swift.repositories.blobstore;
 
 import java.util.Collection;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -53,7 +54,7 @@ public class SwiftBlobStore implements BlobStore {
         return envSettings;
     }
 
-    private Container container;
+    private final AtomicReference<Container> container = new AtomicReference<>(null);
 
     private final Settings settings;
     private final Account auth;
@@ -99,19 +100,12 @@ public class SwiftBlobStore implements BlobStore {
      * @throws Exception from retry()
      */
     public Container getContainer() throws Exception {
-        if (container != null) {
-            return container;
+        if (container.get() != null) {
+            return container.get();
         }
 
-        synchronized(this) {
-            if (container != null) {
-                return container;
-            }
-
-            container = internalGetContainer();
-        }
-
-        return container;
+        container.compareAndSet(null, internalGetContainer());
+        return container.get();
     }
 
     private Container internalGetContainer() throws Exception {
@@ -155,7 +149,7 @@ public class SwiftBlobStore implements BlobStore {
             if (directoryOrObject.isObject()) {
                 directoryOrObject.getAsObject().delete();
             } else {
-                deleteByPrefix(container.listDirectory(directoryOrObject.getAsDirectory()));
+                deleteByPrefix(container.get().listDirectory(directoryOrObject.getAsDirectory()));
             }
         }
     }
