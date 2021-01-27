@@ -179,7 +179,8 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         try {
             Container container = blobStore.getContainer();
             ContainerPaginationMap containerPaginationMap = new ContainerPaginationMap(container, keyPath, container.getMaxPageSize());
-            Collection<StoredObject> containerObjects = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
+            Collection<StoredObject> containerObjects = withTimeout().retry(
+                    retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
                 () -> SwiftPerms.exec( () -> {
                     try {
                         return containerPaginationMap.listAllItems();
@@ -227,7 +228,8 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     public Map<String, BlobMetaData> listBlobsByPrefix(@Nullable final String blobNamePrefix) throws IOException {
         String directoryKey = blobNamePrefix == null ? keyPath : buildKey(blobNamePrefix);
         try {
-            Collection<DirectoryOrObject> directoryList = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
+            Collection<DirectoryOrObject> directoryList = withTimeout().retry(
+                retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
                 () -> SwiftPerms.execThrows(() -> {
                     try {
                         return blobStore.getContainer().listDirectory(new Directory(directoryKey, '/'));
@@ -280,15 +282,16 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     public Map<String, BlobContainer> children() throws IOException{
         Collection<DirectoryOrObject> objects;
         try {
-            objects = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount, () -> SwiftPerms.execThrows(() -> {
-                try {
-                    return blobStore.getContainer().listDirectory(new Directory(keyPath, '/'));
-                }
-                catch (Exception e) {
-                    logger.warn("cannot list children for [" + keyPath + "]", e);
-                    throw e;
-                }
-            }));
+            objects = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
+                    () -> SwiftPerms.execThrows(() -> {
+                        try {
+                            return blobStore.getContainer().listDirectory(new Directory(keyPath, '/'));
+                        }
+                        catch (Exception e) {
+                            logger.warn("cannot list children for [" + keyPath + "]", e);
+                            throw e;
+                        }
+                    }));
         }
         catch (IOException | RuntimeException e) {
             throw e;
