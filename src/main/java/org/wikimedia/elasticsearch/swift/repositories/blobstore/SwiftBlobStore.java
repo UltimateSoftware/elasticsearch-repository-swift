@@ -64,6 +64,7 @@ public class SwiftBlobStore implements BlobStore {
 
     private final int retryIntervalS;
     private final int shortOperationTimeoutS;
+    private final int retryCount;
 
     /**
      * Constructor. Sets up the container mostly.
@@ -86,6 +87,7 @@ public class SwiftBlobStore implements BlobStore {
         bufferSizeInBytes = settings.getAsBytesSize("buffer_size", new ByteSizeValue(100, ByteSizeUnit.KB)).getBytes();
         withTimeoutFactory = new WithTimeout.Factory();
         retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
+        retryCount = SwiftRepository.Swift.RETRY_COUNT_SETTING.get(envSettings);
         shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
         allowConcurrentIO = SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(envSettings);
     }
@@ -109,7 +111,7 @@ public class SwiftBlobStore implements BlobStore {
     }
 
     private Container internalGetContainer() throws Exception {
-        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
+        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount, () -> {
             try {
                 return SwiftPerms.exec(() -> {
                     Container container = auth.getContainer(containerName);
