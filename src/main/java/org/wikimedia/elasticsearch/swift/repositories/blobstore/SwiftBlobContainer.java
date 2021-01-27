@@ -335,7 +335,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         String objectName = buildKey(blobName);
 
         try {
-            return withTimeout().retry(retryIntervalS, TimeUnit.SECONDS, retryCount, () -> {
+            return withTimeout().retry(retryIntervalS, longOperationTimeoutS, TimeUnit.SECONDS, retryCount, () -> {
                 try {
                     ObjectInfo object = getObjectInfo(objectName); //retries internally
 
