@@ -120,11 +120,11 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     }
 
     /**
-     * Delete a blob. Do no propagate exceptions.
+     * Delete a blob. Straightforward.
      * @param blobName A blob to delete
      */
     @Override
-    public void deleteBlob(final String blobName) {
+    public void deleteBlob(final String blobName) throws IOException {
         if (blobName.startsWith("tests-") && keyPath.isEmpty()){
             logger.info("ignoring deletion of pseudo-folder [" + blobName + "]");
             return;
@@ -136,55 +136,50 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             return;
         }
 
-        internalDeleteBlob(blobName);
-    }
-
-    /**
-     * Delete object, and do no allow exceptions to propagate
-     * @param blobName suffix part of the object name
-     * @return pair of objects freed/bytes freed
-     */
-    private DeleteResult internalDeleteBlob(String blobName) {
-        final String objectName = buildKey(blobName);
-
         try {
-            return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
-                    () -> SwiftPerms.execThrows(() -> {
-                        try {
-                            StoredObject object = blobStore.getContainer().getObject(objectName);
-                            long contentLength = object.getContentLength();
-                            object.delete();
-                            logger.debug("deleted object [" + objectName + "]");
-                            return new DeleteResult(1, contentLength);
-                        }
-                        catch (NotFoundException e) {
-                            // this conversion is necessary for tests to run
-                            String message = "object cannot be deleted, it does not exist [" + objectName + "]";
-                            logger.warn(message);
-                            NoSuchFileException e2 = new NoSuchFileException(message);
-                            e2.initCause(e);
-                            throw e2;
-                        }
-                        catch (Exception e) {
-                            logger.error("object cannot be deleted [" + objectName + "]", e);
-                            throw e;
-                        }
-                    }));
-        } catch (Exception e) {
-            logger.error("object cannot be deleted [" + objectName + "]", e);
-            return DeleteResult.ZERO;
+            internalDeleteBlob(blobName);
+        }
+        catch (IOException | RuntimeException e){
+            throw e;
+        }
+        catch (Exception e) {
+            throw new BlobStoreException("cannot delete blob [" + blobName + "]", e);
         }
     }
 
-    @Override
-    public DeleteResult delete() {
-        DeleteResult results = DeleteResult.ZERO;
+    private DeleteResult internalDeleteBlob(String blobName) throws Exception {
+        final String objectName = buildKey(blobName);
 
+        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
+            () -> SwiftPerms.execThrows(() -> {
+                try {
+                    StoredObject object = blobStore.getContainer().getObject(objectName);
+                    long contentLength = object.getContentLength();
+                    object.delete();
+                    return new DeleteResult(1, contentLength);
+                }
+                catch (NotFoundException e) {
+                    // this conversion is necessary for tests to run
+                    String message = "object cannot be deleted, it does not exist [" + objectName + "]";
+                    logger.warn(message);
+                    NoSuchFileException e2 = new NoSuchFileException(message);
+                    e2.initCause(e);
+                    throw e2;
+                }
+                catch (Exception e) {
+                    logger.warn("object cannot be deleted [" + objectName + "]", e);
+                    throw e;
+                }
+            }));
+    }
+
+    @Override
+    public DeleteResult delete() throws IOException {
         try {
             Container container = blobStore.getContainer();
             ContainerPaginationMap containerPaginationMap = new ContainerPaginationMap(container, keyPath, container.getMaxPageSize());
             Collection<StoredObject> containerObjects = withTimeout().retry(
-                    retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
+                retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
                 () -> SwiftPerms.exec( () -> {
                     try {
                         return containerPaginationMap.listAllItems();
@@ -195,8 +190,11 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                     }
                 }));
 
+            DeleteResult results = DeleteResult.ZERO;
+
             for (StoredObject so: containerObjects) {
-                String blobName = so.getName().substring(keyPath.length());
+                final String blobName = so.getName().substring(keyPath.length());
+
                 try {
                     long size = SwiftPerms.exec(so::getContentLength); // length already cached, no need to retry
                     deleteBlob(blobName); //retry happens inside the method
@@ -205,12 +203,15 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                     logger.error("Cannot delete blob [" + blobName + "]", e);
                 }
             }
+
+            return results;
+        }
+        catch (IOException | RuntimeException e) {
+           throw e;
         }
         catch (Exception e) {
-            logger.error("cannot delete blobs in path [" + keyPath + "]", e);
+            throw new BlobStoreException("cannot delete blobs in path [" + keyPath + "]", e);
         }
-
-        return results;
     }
 
     /**
@@ -220,7 +221,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      */
     @Override
     public Map<String, BlobMetaData> listBlobsByPrefix(@Nullable final String blobNamePrefix) throws IOException {
-        final String directoryKey = blobNamePrefix == null ? keyPath : buildKey(blobNamePrefix);
+        String directoryKey = blobNamePrefix == null ? keyPath : buildKey(blobNamePrefix);
         try {
             Collection<DirectoryOrObject> directoryList = withTimeout().retry(
                 retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
@@ -391,29 +392,29 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      * @return object metadata from Swift
      * @throws Exception on timeout, I/O errors
      */
-    private ObjectInfo getObjectInfo(String objectName) throws Exception{
+    private ObjectInfo getObjectInfo(String objectName) throws Exception {
         return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
-                () -> SwiftPerms.execThrows(() -> {
-                    try {
-                        StoredObject storedObject = blobStore.getContainer().getObject(objectName);
-                        ObjectInfo objectInfo = new ObjectInfo();
-                        objectInfo.stream = storedObject.downloadObjectAsInputStream();
-                        objectInfo.size = storedObject.getContentLength();
-                        objectInfo.tag = storedObject.getEtag();
-                        return objectInfo;
-                    } catch (NotFoundException e) {
-                        // this conversion is necessary for tests to pass
-                        String message = "cannot read object, it does not exist [" + objectName + "]";
-                        logger.warn(message);
-                        NoSuchFileException e2 = new NoSuchFileException(message);
-                        e2.initCause(e);
-                        throw e2;
-                    }
-                    catch (Exception e){
-                        logger.warn("cannot read object [" + objectName + "]", e);
-                        throw e;
-                    }
-                }));
+            () -> SwiftPerms.execThrows(() -> {
+                try {
+                    StoredObject storedObject = blobStore.getContainer().getObject(objectName);
+                    ObjectInfo objectInfo = new ObjectInfo();
+                    objectInfo.stream = storedObject.downloadObjectAsInputStream();
+                    objectInfo.size = storedObject.getContentLength();
+                    objectInfo.tag = storedObject.getEtag();
+                    return objectInfo;
+                } catch (NotFoundException e) {
+                    // this conversion is necessary for tests to pass
+                    String message = "cannot read object, it does not exist [" + objectName + "]";
+                    logger.warn(message);
+                    NoSuchFileException e2 = new NoSuchFileException(message);
+                    e2.initCause(e);
+                    throw e2;
+                }
+                catch (Exception e){
+                    logger.warn("cannot read object [" + objectName + "]", e);
+                    throw e;
+                }
+            }));
     }
 
     private InputStreamWrapperWithDataHash wrapObjectStream(String objectName, ObjectInfo object) {
