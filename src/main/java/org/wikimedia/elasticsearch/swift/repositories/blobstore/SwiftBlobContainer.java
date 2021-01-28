@@ -150,7 +150,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     private DeleteResult internalDeleteBlob(String blobName) throws Exception {
         final String objectName = buildKey(blobName);
 
-        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
+        Object result = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
             () -> SwiftPerms.execThrows(() -> {
                 try {
                     StoredObject object = blobStore.getContainer().getObject(objectName);
@@ -164,13 +164,18 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                     logger.warn(message);
                     NoSuchFileException e2 = new NoSuchFileException(message);
                     e2.initCause(e);
-                    throw e2;
+                    return e2;
                 }
                 catch (Exception e) {
                     logger.warn("object cannot be deleted [" + objectName + "]", e);
                     throw e;
                 }
             }));
+
+        if (result instanceof DeleteResult){
+            return (DeleteResult) result;
+        }
+        throw (Exception) result;
     }
 
     @Override
@@ -393,7 +398,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      * @throws Exception on timeout, I/O errors
      */
     private ObjectInfo getObjectInfo(String objectName) throws Exception {
-        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
+        Object result = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
             () -> SwiftPerms.execThrows(() -> {
                 try {
                     StoredObject storedObject = blobStore.getContainer().getObject(objectName);
@@ -408,13 +413,19 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                     logger.warn(message);
                     NoSuchFileException e2 = new NoSuchFileException(message);
                     e2.initCause(e);
-                    throw e2;
+                    return e2;
                 }
                 catch (Exception e){
                     logger.warn("cannot read object [" + objectName + "]", e);
                     throw e;
                 }
             }));
+
+        if (result instanceof ObjectInfo){
+            return (ObjectInfo) result;
+        }
+
+        throw (Exception) result;
     }
 
     private InputStreamWrapperWithDataHash wrapObjectStream(String objectName, ObjectInfo object) {
