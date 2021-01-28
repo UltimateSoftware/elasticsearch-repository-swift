@@ -16,7 +16,6 @@
 
 package org.wikimedia.elasticsearch.swift.repositories.blobstore;
 
-import java.util.Collection;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -30,7 +29,6 @@ import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.javaswift.joss.model.Account;
 import org.javaswift.joss.model.Container;
-import org.javaswift.joss.model.DirectoryOrObject;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
@@ -143,17 +141,6 @@ public class SwiftBlobStore implements BlobStore {
     @Override
     public BlobContainer blobContainer(BlobPath path) {
         return new SwiftBlobContainer(this, path);
-    }
-
-    //TODO method seems unused. Remove?
-    private void deleteByPrefix(Collection<DirectoryOrObject> directoryOrObjects) {
-        for (DirectoryOrObject directoryOrObject : directoryOrObjects) {
-            if (directoryOrObject.isObject()) {
-                directoryOrObject.getAsObject().delete();
-            } else {
-                deleteByPrefix(container.get().listDirectory(directoryOrObject.getAsDirectory()));
-            }
-        }
     }
 
     /**
