@@ -135,13 +135,6 @@ public class SwiftRepository extends BlobStoreRepository {
     private final Settings settings;
     private final Settings envSettings;
 
-    public Settings getSettings() {
-        return settings;
-    }
-    public Settings getEnvSettings() {
-        return envSettings;
-    }
-
     private final ConcurrentHashMap<String, Future<DeleteResult>> blobDeletionTasks = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Future<Void>> blobWriteTasks = new ConcurrentHashMap<>();
     private final SwiftAccountFactory accountFactory;
