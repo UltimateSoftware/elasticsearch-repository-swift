@@ -463,7 +463,9 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
         if (dataEtag.equalsIgnoreCase(objectEtag)) {
             objectStream.reset();
-            logger.debug("read object into memory [" + objectName + "], size=[" + size + "]");
+            if (logger.isDebugEnabled()) {
+                logger.debug("read object into memory [" + objectName + "], size=[" + size + "]");
+            }
             return objectStream;
         }
 
