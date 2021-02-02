@@ -16,8 +16,8 @@
 
 package org.wikimedia.elasticsearch.swift.repositories.blobstore;
 
-import java.util.Collection;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -29,7 +29,6 @@ import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.javaswift.joss.model.Account;
 import org.javaswift.joss.model.Container;
-import org.javaswift.joss.model.DirectoryOrObject;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
@@ -53,7 +52,7 @@ public class SwiftBlobStore implements BlobStore {
         return envSettings;
     }
 
-    private Container container;
+    private final AtomicReference<Container> container = new AtomicReference<>(null);
 
     private final Settings settings;
     private final Account auth;
@@ -63,6 +62,7 @@ public class SwiftBlobStore implements BlobStore {
 
     private final int retryIntervalS;
     private final int shortOperationTimeoutS;
+    private final int retryCount;
 
     /**
      * Constructor. Sets up the container mostly.
@@ -85,6 +85,7 @@ public class SwiftBlobStore implements BlobStore {
         bufferSizeInBytes = settings.getAsBytesSize("buffer_size", new ByteSizeValue(100, ByteSizeUnit.KB)).getBytes();
         withTimeoutFactory = new WithTimeout.Factory();
         retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
+        retryCount = SwiftRepository.Swift.RETRY_COUNT_SETTING.get(envSettings);
         shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
         allowConcurrentIO = SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(envSettings);
     }
@@ -99,23 +100,16 @@ public class SwiftBlobStore implements BlobStore {
      * @throws Exception from retry()
      */
     public Container getContainer() throws Exception {
-        if (container != null) {
-            return container;
+        if (container.get() != null) {
+            return container.get();
         }
 
-        synchronized(this) {
-            if (container != null) {
-                return container;
-            }
-
-            container = internalGetContainer();
-        }
-
-        return container;
+        container.compareAndSet(null, internalGetContainer());
+        return container.get();
     }
 
     private Container internalGetContainer() throws Exception {
-        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> {
+        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount, () -> {
             try {
                 return SwiftPerms.exec(() -> {
                     Container container = auth.getContainer(containerName);
@@ -147,17 +141,6 @@ public class SwiftBlobStore implements BlobStore {
     @Override
     public BlobContainer blobContainer(BlobPath path) {
         return new SwiftBlobContainer(this, path);
-    }
-
-    //TODO method seems unused. Remove?
-    private void deleteByPrefix(Collection<DirectoryOrObject> directoryOrObjects) {
-        for (DirectoryOrObject directoryOrObject : directoryOrObjects) {
-            if (directoryOrObject.isObject()) {
-                directoryOrObject.getAsObject().delete();
-            } else {
-                deleteByPrefix(container.listDirectory(directoryOrObject.getAsDirectory()));
-            }
-        }
     }
 
     /**

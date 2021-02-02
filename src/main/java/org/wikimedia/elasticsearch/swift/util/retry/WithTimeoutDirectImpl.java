@@ -29,7 +29,7 @@ class WithTimeoutDirectImpl implements WithTimeout {
     }
 
     @Override
-    public <T> T retry(long interval, TimeUnit timeUnit, int attempts, Callable<T> callable) throws Exception {
+    public <T> T retry(long interval, long timeout, TimeUnit timeUnit, int attempts, Callable<T> callable) throws Exception {
         return callable.call();
     }
 

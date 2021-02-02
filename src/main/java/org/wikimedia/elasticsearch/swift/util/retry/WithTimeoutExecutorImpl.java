@@ -34,28 +34,15 @@ class WithTimeoutExecutorImpl implements WithTimeout {
     @Override
     public <T> T retry(long interval, long timeout, TimeUnit timeUnit, Callable<T> callable)
             throws InterruptedException, ExecutionException, TimeoutException {
-        Future<T> task = executorService.submit(() -> internalRetry(interval, timeout, timeUnit, callable));
+        Future<T> task = executorService.submit(() -> internalRetry(interval, timeout, timeUnit, Integer.MAX_VALUE, callable));
         return task.get(timeout, timeUnit);
     }
 
     @Override
-    public <T> T retry(long interval, TimeUnit timeUnit, int attempts, Callable<T> callable) throws Exception {
-        final long sleepMillis = TimeUnit.MILLISECONDS.convert(interval, timeUnit);
-        final int sleepNanos = (int)(TimeUnit.NANOSECONDS.convert(interval, timeUnit) - sleepMillis * 1_000_000);
-
-        for (int i = 0; i < attempts; i++) {
-            try{
-                return callable.call();
-            }
-            catch (InterruptedException e){
-                throw e;
-            }
-            catch (Exception e){
-                Thread.sleep(sleepMillis, sleepNanos);
-            }
-        }
-
-        throw new TimeoutException("retry count exhausted");
+    public <T> T retry(long interval, long timeout, TimeUnit timeUnit, int attempts, Callable<T> callable)
+            throws InterruptedException, ExecutionException, TimeoutException  {
+        Future<T> task = executorService.submit(() -> internalRetry(interval, timeout, timeUnit, attempts, callable));
+        return task.get(timeout, timeUnit);
     }
 
     @Override
@@ -64,13 +51,14 @@ class WithTimeoutExecutorImpl implements WithTimeout {
         return task.get(timeout, timeUnit);
     }
 
-    private <T> T internalRetry(long interval, long timeout, TimeUnit timeUnit, Callable<T> callable)
+    private <T> T internalRetry(long interval, long timeout, TimeUnit timeUnit, final int attempts, Callable<T> callable)
             throws TimeoutException, InterruptedException {
         final long sleepMillis = TimeUnit.MILLISECONDS.convert(interval, timeUnit);
         final int sleepNanos = (int)(TimeUnit.NANOSECONDS.convert(interval, timeUnit) - sleepMillis * 1_000_000);
         final long nanoTimeLimit = System.nanoTime() + TimeUnit.NANOSECONDS.convert(timeout, timeUnit);
 
-        while (System.nanoTime() < nanoTimeLimit) {
+        int count = 0;
+        while (count++ < attempts && System.nanoTime() < nanoTimeLimit) {
             try {
                 return callable.call();
             }
@@ -78,8 +66,10 @@ class WithTimeoutExecutorImpl implements WithTimeout {
                 throw e;
             }
             catch (Exception e) {
-                //noinspection BusyWait
-                Thread.sleep(sleepMillis, sleepNanos);
+                if (count < attempts){
+                    //noinspection BusyWait
+                    Thread.sleep(sleepMillis, sleepNanos);
+                }
             }
         }
 

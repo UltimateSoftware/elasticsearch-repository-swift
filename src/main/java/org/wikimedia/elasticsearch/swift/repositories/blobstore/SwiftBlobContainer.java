@@ -48,7 +48,6 @@ import java.io.IOException;
 import java.nio.file.FileAlreadyExistsException;
 
 import java.nio.file.NoSuchFileException;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -58,7 +57,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 /**
  * Swift's implementation of the AbstractBlobContainer
@@ -152,26 +150,32 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     private DeleteResult internalDeleteBlob(String blobName) throws Exception {
         final String objectName = buildKey(blobName);
 
-        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> SwiftPerms.execThrows(() -> {
-            try {
-                StoredObject object = blobStore.getContainer().getObject(objectName);
-                long contentLength = object.getContentLength();
-                object.delete();
-                return new DeleteResult(1, contentLength);
-            }
-            catch (NotFoundException e) {
-                // this conversion is necessary for tests to run
-                String message = "object cannot be deleted, it does not exist [" + objectName + "]";
-                logger.warn(message);
-                NoSuchFileException e2 = new NoSuchFileException(message);
-                e2.initCause(e);
-                throw e2;
-            }
-            catch (Exception e) {
-                logger.warn("object cannot be deleted [" + objectName + "]", e);
-                throw e;
-            }
-        }));
+        Object result = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
+            () -> SwiftPerms.execThrows(() -> {
+                try {
+                    StoredObject object = blobStore.getContainer().getObject(objectName);
+                    long contentLength = object.getContentLength();
+                    object.delete();
+                    return new DeleteResult(1, contentLength);
+                }
+                catch (NotFoundException e) {
+                    // this conversion is necessary for tests to run
+                    String message = "object cannot be deleted, it does not exist [" + objectName + "]";
+                    logger.warn(message);
+                    NoSuchFileException e2 = new NoSuchFileException(message);
+                    e2.initCause(e);
+                    return e2;
+                }
+                catch (Exception e) {
+                    logger.warn("object cannot be deleted [" + objectName + "]", e);
+                    throw e;
+                }
+            }));
+
+        if (result instanceof DeleteResult){
+            return (DeleteResult) result;
+        }
+        throw (Exception) result;
     }
 
     @Override
@@ -179,7 +183,8 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         try {
             Container container = blobStore.getContainer();
             ContainerPaginationMap containerPaginationMap = new ContainerPaginationMap(container, keyPath, container.getMaxPageSize());
-            Collection<StoredObject> containerObjects = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS,
+            Collection<StoredObject> containerObjects = withTimeout().retry(
+                retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
                 () -> SwiftPerms.exec( () -> {
                     try {
                         return containerPaginationMap.listAllItems();
@@ -191,24 +196,20 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                 }));
 
             DeleteResult results = DeleteResult.ZERO;
-            ArrayList<Exception> errors = new ArrayList<>();
 
             for (StoredObject so: containerObjects) {
+                final String blobName = so.getName().substring(keyPath.length());
+
                 try {
                     long size = SwiftPerms.exec(so::getContentLength); // length already cached, no need to retry
-                    deleteBlob(so.getName().substring(keyPath.length())); //retry happens inside the method
+                    deleteBlob(blobName); //retry happens inside the method
                     results = results.add(1, size);
                 } catch (Exception e) {
-                    errors.add(e);
+                    logger.error("Cannot delete blob [" + blobName + "]", e);
                 }
             }
 
-            if (errors.isEmpty()) {
-                return results;
-            }
-
-            String message = errors.stream().map(Exception::getMessage).collect(Collectors.joining(","));
-            throw new BlobStoreException("cannot delete blobs in path [" + keyPath + "]: " + message);
+            return results;
         }
         catch (IOException | RuntimeException e) {
            throw e;
@@ -227,7 +228,8 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     public Map<String, BlobMetaData> listBlobsByPrefix(@Nullable final String blobNamePrefix) throws IOException {
         String directoryKey = blobNamePrefix == null ? keyPath : buildKey(blobNamePrefix);
         try {
-            Collection<DirectoryOrObject> directoryList = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS,
+            Collection<DirectoryOrObject> directoryList = withTimeout().retry(
+                retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
                 () -> SwiftPerms.execThrows(() -> {
                     try {
                         return blobStore.getContainer().listDirectory(new Directory(directoryKey, '/'));
@@ -243,7 +245,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             for (DirectoryOrObject obj: directoryList) {
                 if (obj.isObject()) {
                     String name = obj.getName().substring(keyPath.length());
-                    Long length = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS,
+                    Long length = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
                         () -> SwiftPerms.exec(() -> {
                             try {
                                 return obj.getAsObject().getContentLength();
@@ -280,15 +282,16 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     public Map<String, BlobContainer> children() throws IOException{
         Collection<DirectoryOrObject> objects;
         try {
-            objects = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> SwiftPerms.execThrows(() -> {
-                try {
-                    return blobStore.getContainer().listDirectory(new Directory(keyPath, '/'));
-                }
-                catch (Exception e) {
-                    logger.warn("cannot list children for [" + keyPath + "]", e);
-                    throw e;
-                }
-            }));
+            objects = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
+                    () -> SwiftPerms.execThrows(() -> {
+                        try {
+                            return blobStore.getContainer().listDirectory(new Directory(keyPath, '/'));
+                        }
+                        catch (Exception e) {
+                            logger.warn("cannot list children for [" + keyPath + "]", e);
+                            throw e;
+                        }
+                    }));
         }
         catch (IOException | RuntimeException e) {
             throw e;
@@ -335,7 +338,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         String objectName = buildKey(blobName);
 
         try {
-            return withTimeout().retry(retryIntervalS, TimeUnit.SECONDS, retryCount, () -> {
+            return withTimeout().retry(retryIntervalS, longOperationTimeoutS, TimeUnit.SECONDS, retryCount, () -> {
                 try {
                     ObjectInfo object = getObjectInfo(objectName); //retries internally
 
@@ -394,28 +397,35 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      * @return object metadata from Swift
      * @throws Exception on timeout, I/O errors
      */
-    private ObjectInfo getObjectInfo(String objectName) throws Exception{
-        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, () -> SwiftPerms.execThrows(() -> {
-            try {
-                StoredObject storedObject = blobStore.getContainer().getObject(objectName);
-                ObjectInfo objectInfo = new ObjectInfo();
-                objectInfo.stream = storedObject.downloadObjectAsInputStream();
-                objectInfo.size = storedObject.getContentLength();
-                objectInfo.tag = storedObject.getEtag();
-                return objectInfo;
-            } catch (NotFoundException e) {
-                // this conversion is necessary for tests to pass
-                String message = "cannot read object, it does not exist [" + objectName + "]";
-                logger.warn(message);
-                NoSuchFileException e2 = new NoSuchFileException(message);
-                e2.initCause(e);
-                throw e2;
-            }
-            catch (Exception e){
-                logger.warn("cannot read object [" + objectName + "]", e);
-                throw e;
-            }
-        }));
+    private ObjectInfo getObjectInfo(String objectName) throws Exception {
+        Object result = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
+            () -> SwiftPerms.execThrows(() -> {
+                try {
+                    StoredObject storedObject = blobStore.getContainer().getObject(objectName);
+                    ObjectInfo objectInfo = new ObjectInfo();
+                    objectInfo.stream = storedObject.downloadObjectAsInputStream();
+                    objectInfo.size = storedObject.getContentLength();
+                    objectInfo.tag = storedObject.getEtag();
+                    return objectInfo;
+                } catch (NotFoundException e) {
+                    // this conversion is necessary for tests to pass
+                    String message = "cannot read object, it does not exist [" + objectName + "]";
+                    logger.warn(message);
+                    NoSuchFileException e2 = new NoSuchFileException(message);
+                    e2.initCause(e);
+                    return e2;
+                }
+                catch (Exception e){
+                    logger.warn("cannot read object [" + objectName + "]", e);
+                    throw e;
+                }
+            }));
+
+        if (result instanceof ObjectInfo){
+            return (ObjectInfo) result;
+        }
+
+        throw (Exception) result;
     }
 
     private InputStreamWrapperWithDataHash wrapObjectStream(String objectName, ObjectInfo object) {
@@ -453,7 +463,9 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
         if (dataEtag.equalsIgnoreCase(objectEtag)) {
             objectStream.reset();
-            logger.debug("read object into memory [" + objectName + "], size=[" + size + "]");
+            if (logger.isDebugEnabled()) {
+                logger.debug("read object into memory [" + objectName + "], size=[" + size + "]");
+            }
             return objectStream;
         }
 
@@ -521,7 +533,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         }
 
         try {
-            IOException exception = withTimeout().retry(retryIntervalS, longOperationTimeoutS, TimeUnit.SECONDS,
+            IOException exception = withTimeout().retry(retryIntervalS, longOperationTimeoutS, TimeUnit.SECONDS, retryCount,
                     () -> SwiftPerms.execThrows(() -> {
                         try {
                             StoredObject object = blobStore.getContainer().getObject(objectName);

@@ -29,7 +29,6 @@ public class InputStreamWrapperWithDataHash extends InputStream {
     private final String dataHash;
     private String actualDataHash;
     private final MessageDigest digest = DigestUtils.getMd5Digest();
-    private boolean isEof = false;
 
     public InputStreamWrapperWithDataHash(String objectName, InputStream innerStream, String dataHash) {
         this.objectName = objectName;
@@ -50,7 +49,13 @@ public class InputStreamWrapperWithDataHash extends InputStream {
         if (off == 0 && b.length == len){
             return read(b);
         }
-        return super.read(b, off, len); // this is never actually called
+
+        byte[] buffer = new byte[Math.min(b.length-off, len)];
+        int bytesRead = read(buffer);
+        if (bytesRead > 0){
+            System.arraycopy(buffer, 0, b, off, bytesRead);
+        }
+        return bytesRead;
     }
 
     /**
@@ -67,8 +72,8 @@ public class InputStreamWrapperWithDataHash extends InputStream {
             return bytesRead;
         }
 
-        if (!isEof) {
-            isEof = true;
+        // EOF
+        if (actualDataHash == null) {
             actualDataHash = Hex.encodeHexString(digest.digest());
         }
 
@@ -91,8 +96,7 @@ public class InputStreamWrapperWithDataHash extends InputStream {
     @Override
     public int read() throws IOException {
         byte[] b=new byte[1];
-        int result = read(b);
-        return result == -1 ? -1 : b[0]&0xff;
+        return read(b) == -1 ? -1 : b[0]&0xff;
     }
 
     /**

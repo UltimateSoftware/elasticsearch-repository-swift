@@ -45,7 +45,7 @@ public class SwiftService extends AbstractLifecycleComponent {
     private final int retryIntervalS;
     private final int shortOperationTimeoutS;
     private final Boolean allowConcurrentIO;
-
+    private final int retryCount;
 
     /**
      * Constructor
@@ -63,6 +63,7 @@ public class SwiftService extends AbstractLifecycleComponent {
         retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
         shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
         allowConcurrentIO = SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(envSettings);
+        retryCount = SwiftRepository.Swift.RETRY_COUNT_SETTING.get(envSettings);
     }
 
     private WithTimeout withTimeout() {
@@ -95,7 +96,7 @@ public class SwiftService extends AbstractLifecycleComponent {
     }
 
     private Account createAccount(final AccountConfig conf) throws Exception {
-        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS,() -> {
+        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount, () -> {
             try {
                 return SwiftPerms.exec(() -> new AccountFactory(conf).createAccount());
             }

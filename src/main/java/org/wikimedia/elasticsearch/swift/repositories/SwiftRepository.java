@@ -31,6 +31,7 @@ import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
+import org.elasticsearch.common.util.concurrent.FutureUtils;
 import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.index.mapper.MapperService;
 import org.elasticsearch.index.shard.ShardId;
@@ -134,13 +135,6 @@ public class SwiftRepository extends BlobStoreRepository {
     private final Settings settings;
     private final Settings envSettings;
 
-    public Settings getSettings() {
-        return settings;
-    }
-    public Settings getEnvSettings() {
-        return envSettings;
-    }
-
     private final ConcurrentHashMap<String, Future<DeleteResult>> blobDeletionTasks = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Future<Void>> blobWriteTasks = new ConcurrentHashMap<>();
     private final SwiftAccountFactory accountFactory;
@@ -185,8 +179,12 @@ public class SwiftRepository extends BlobStoreRepository {
     @Override
     public void deleteSnapshot(SnapshotId snapshotId, long repositoryStateId, ActionListener<Void> listener) {
         initializeBlobTasks();
-        super.deleteSnapshot(snapshotId, repositoryStateId, listener);
-        finalizeBlobTasks(snapshotId.toString(), listener);
+        try{
+            super.deleteSnapshot(snapshotId, repositoryStateId, listener);
+        }
+        finally {
+            finalizeBlobTasks(snapshotId.toString(), listener);
+        }
     }
 
     private void initializeBlobTasks() {
@@ -202,31 +200,31 @@ public class SwiftRepository extends BlobStoreRepository {
     // Intent of this method is to provide a wait that delays completion of potentially mutually exclusive operations
     // in Elasticsearch
     //
-    private void finalizeBlobDeletion(String operationId, ActionListener<?> listener, final long timeLimit) {
+    private void finalizeBlobDeletion(String operationId, ActionListener<?> listener, final long timeout, TimeUnit timeUnit) {
         long failedCount = 0;
+        final long nanoTimeLimit = System.nanoTime() + TimeUnit.NANOSECONDS.convert(timeout, timeUnit);
 
         for (Map.Entry<String, Future<DeleteResult>> entry: blobDeletionTasks.entrySet()) {
-            try {
-                long remaining_ns = timeLimit - System.nanoTime();
-                if (remaining_ns < 0) {
-                    throw new TimeoutException();
-                }
+            String blobName = entry.getKey();
+            Future<DeleteResult> task = entry.getValue();
 
-                entry.getValue().get(remaining_ns, TimeUnit.NANOSECONDS);
+            try {
+                long remaining_ns = Math.max(nanoTimeLimit - System.nanoTime(), 0);
+
+                task.get(remaining_ns, TimeUnit.NANOSECONDS);
             }
             catch (TimeoutException e){
-                long notDoneCount = blobDeletionTasks.values().stream().filter(t -> !t.isDone()).count();
-                if (listener != null){
-                    listener.onFailure(new RepositoryException(metadata.name(),
-                        "failed to delete snapshot [" + operationId + "]: timed out, " + notDoneCount + " deletions in progress"));
-                }
-                return; // Stop processing
+                logger.warn("Timed out deleting blob [" + blobName + "], snapshot ["+ operationId + "]. Cancelling task");
+                FutureUtils.cancel(task);
+                failedCount++;
             }
             catch (Exception e) {
-                logger.warn("failed to delete blob [" + entry.getKey() + "]", e);
+                logger.warn("Failed to delete blob [" + blobName + "], snapshot ["+ operationId + "]. Cancelling task", e);
+                FutureUtils.cancel(task);
                 failedCount++;
             }
         }
+        blobDeletionTasks.clear();
 
         if (failedCount > 0 && listener != null){
             listener.onFailure(new RepositoryException(metadata.name(),
@@ -235,14 +233,8 @@ public class SwiftRepository extends BlobStoreRepository {
     }
 
     private void finalizeBlobTasks(String operationId, ActionListener<?> listener) {
-        long now = System.nanoTime();
-        final long deleteTimeLimit = now + TimeUnit.NANOSECONDS.convert(Swift.DELETE_TIMEOUT_MIN_SETTING.get(envSettings),
-                                                                        TimeUnit.MINUTES);
-        final long snapshotTimeLimit = now + TimeUnit.NANOSECONDS.convert(Swift.SNAPSHOT_TIMEOUT_MIN_SETTING.get(envSettings),
-                                                                          TimeUnit.MINUTES);
-
-        finalizeBlobWrite(operationId, listener, snapshotTimeLimit);
-        finalizeBlobDeletion(operationId, listener, deleteTimeLimit);
+        finalizeBlobWrite(operationId, listener, Swift.SNAPSHOT_TIMEOUT_MIN_SETTING.get(envSettings), TimeUnit.MINUTES);
+        finalizeBlobDeletion(operationId, listener, Swift.DELETE_TIMEOUT_MIN_SETTING.get(envSettings), TimeUnit.MINUTES);
     }
 
     public void addWrite(String blobName, Future<Void> task) {
@@ -253,31 +245,31 @@ public class SwiftRepository extends BlobStoreRepository {
     // Intent of this method is to provide a wait that delays completion of potentially mutually exclusive operations
     // in Elasticsearch
     //
-    private void finalizeBlobWrite(String operationId, ActionListener<?> listener, final long timeLimit) {
+    private void finalizeBlobWrite(String operationId, ActionListener<?> listener, final long timeout, TimeUnit timeUnit) {
         long failedCount = 0;
+        final long nanoTimeLimit = System.nanoTime() + TimeUnit.NANOSECONDS.convert(timeout, timeUnit);
 
         for (Map.Entry<String, Future<Void>> entry: blobWriteTasks.entrySet()) {
-            try {
-                long remaining_ns = timeLimit - System.nanoTime();
-                if (remaining_ns < 0) {
-                    throw new TimeoutException();
-                }
+            String blobName = entry.getKey();
+            Future<Void> task = entry.getValue();
 
-                entry.getValue().get(remaining_ns, TimeUnit.NANOSECONDS);
+            try {
+                long remaining_ns = Math.max(nanoTimeLimit - System.nanoTime(), 0);
+
+                task.get(remaining_ns, TimeUnit.NANOSECONDS);
             }
             catch (TimeoutException e){
-                long notDoneCount = blobWriteTasks.values().stream().filter(t -> !t.isDone()).count();
-                if (listener != null){
-                    listener.onFailure(new RepositoryException(metadata.name(),
-                            "failed to complete writes [" + operationId + "]: timed out, " + notDoneCount + " writes in progress"));
-                }
-                return; // Stop processing
+                logger.warn("Timed out writing blob [" + blobName + "], snapshot ["+ operationId + "]. Cancelling task");
+                FutureUtils.cancel(task);
+                failedCount++;
             }
             catch (Exception e) {
-                logger.warn("failed to complete writes [" + entry.getKey() + "]", e);
+                logger.warn("Failed to write blob [" + blobName + "], snapshot ["+ operationId + "]. Cancelling task", e);
+                FutureUtils.cancel(task);
                 failedCount++;
             }
         }
+        blobWriteTasks.clear();
 
         if (failedCount > 0 && listener != null){
             listener.onFailure(new RepositoryException(metadata.name(),
@@ -288,8 +280,11 @@ public class SwiftRepository extends BlobStoreRepository {
     @Override
     public void cleanup(long repositoryStateId, ActionListener<RepositoryCleanupResult> listener) {
         initializeBlobTasks();
-        super.cleanup(repositoryStateId, listener);
-        finalizeBlobTasks(String.valueOf(repositoryStateId), listener);
+        try {
+            super.cleanup(repositoryStateId, listener);
+        } finally {
+            finalizeBlobTasks(String.valueOf(repositoryStateId), listener);
+        }
     }
 
     @Override
@@ -297,9 +292,12 @@ public class SwiftRepository extends BlobStoreRepository {
                                  int totalShards, List<SnapshotShardFailure> shardFailures, long repositoryStateId,
                                  boolean includeGlobalState, MetaData clusterMetaData, Map<String, Object> userMetadata,
                                  ActionListener<SnapshotInfo> listener) {
-        super.finalizeSnapshot(snapshotId, indices, startTime, failure, totalShards, shardFailures, repositoryStateId,
-                includeGlobalState, clusterMetaData, userMetadata, listener);
-        finalizeBlobTasks(snapshotId.toString(), listener);
+        try {
+            super.finalizeSnapshot(snapshotId, indices, startTime, failure, totalShards, shardFailures, repositoryStateId,
+                    includeGlobalState, clusterMetaData, userMetadata, listener);
+        } finally {
+            finalizeBlobTasks(snapshotId.toString(), listener);
+        }
     }
 
     @Override
@@ -310,8 +308,11 @@ public class SwiftRepository extends BlobStoreRepository {
 
     @Override
     public void endVerification(String seed) {
-        super.endVerification(seed);
-        finalizeBlobTasks("verification", null);
+        try {
+            super.endVerification(seed);
+        } finally {
+            finalizeBlobTasks("verification", null);
+        }
     }
 
     @Override
