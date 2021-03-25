@@ -107,7 +107,11 @@ public class InputStreamWrapperWithDataHash extends InputStream {
      * @see     InputStream#read(byte[])
      */
     protected int innerRead(byte[] b) throws IOException {
-        return innerStream.read(b);
+        int read = innerStream.read(b);
+        if (read == -1){
+            innerStream.close();
+        }
+        return read;
     }
 
     @Override

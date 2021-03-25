@@ -347,7 +347,11 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                     }
 
                     // I/O operations are timed. May throw on hash mismatch
-                    return objectToReentrantStream(objectName, object.stream, object.size, object.tag);
+                    try {
+                        return objectToReentrantStream(objectName, object.stream, object.size, object.tag);
+                    } finally {
+                        object.stream.close();
+                    }
                 }
                 catch(Exception e){
                     logger.warn("failed to read object [" + objectName + "]", e);
@@ -400,9 +404,10 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     private ObjectInfo getObjectInfo(String objectName) throws Exception {
         Object result = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
             () -> SwiftPerms.execThrows(() -> {
+                ObjectInfo objectInfo = null;
                 try {
                     StoredObject storedObject = blobStore.getContainer().getObject(objectName);
-                    ObjectInfo objectInfo = new ObjectInfo();
+                    objectInfo = new ObjectInfo();
                     objectInfo.stream = storedObject.downloadObjectAsInputStream();
                     objectInfo.size = storedObject.getContentLength();
                     objectInfo.tag = storedObject.getEtag();
@@ -418,6 +423,11 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                 catch (Exception e){
                     logger.warn("cannot read object [" + objectName + "]", e);
                     throw e;
+                }
+                finally {
+                    if (objectInfo != null && objectInfo.stream != null){
+                        objectInfo.stream.close();
+                    }
                 }
             }));
 
@@ -439,6 +449,11 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                 try {
                     return withTimeout().timeout(shortOperationTimeoutS, TimeUnit.SECONDS, () -> super.innerRead(b));
                 } catch (Exception e) {
+                    try {
+                        close();
+                    } catch (IOException ex) {
+                        logger.error("Exception closing inner stream", ex);
+                    }
                     throw new BlobStoreException("failure reading from [" + objectName + "]", e);
                 }
             }
