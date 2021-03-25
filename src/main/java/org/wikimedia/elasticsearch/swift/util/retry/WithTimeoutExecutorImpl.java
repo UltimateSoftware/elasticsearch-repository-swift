@@ -16,8 +16,10 @@
 
 package org.wikimedia.elasticsearch.swift.util.retry;
 
+import org.apache.logging.log4j.Logger;
+import org.elasticsearch.common.util.concurrent.FutureUtils;
+
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -34,23 +36,21 @@ class WithTimeoutExecutorImpl implements WithTimeout {
     }
 
     @Override
-    public <T> T retry(long interval, long timeout, TimeUnit timeUnit, Callable<T> callable)
-            throws InterruptedException, ExecutionException, TimeoutException {
+    public <T> T retry(long interval, long timeout, TimeUnit timeUnit, Callable<T> callable) {
         Future<T> task = executorService.submit(() -> internalRetry(interval, timeout, timeUnit, Integer.MAX_VALUE, callable));
-        return task.get(timeout, timeUnit);
+        return FutureUtils.get(task, timeout, timeUnit);
     }
 
     @Override
-    public <T> T retry(long interval, long timeout, TimeUnit timeUnit, int attempts, Callable<T> callable)
-            throws InterruptedException, ExecutionException, TimeoutException  {
+    public <T> T retry(long interval, long timeout, TimeUnit timeUnit, int attempts, Callable<T> callable) {
         Future<T> task = executorService.submit(() -> internalRetry(interval, timeout, timeUnit, attempts, callable));
-        return task.get(timeout, timeUnit);
+        return FutureUtils.get(task, timeout, timeUnit);
     }
 
     @Override
-    public <T> T timeout(long timeout, TimeUnit timeUnit, Callable<T> callable) throws Exception {
+    public <T> T timeout(long timeout, TimeUnit timeUnit, Callable<T> callable) {
         Future<T> task = executorService.submit(callable);
-        return task.get(timeout, timeUnit);
+        return FutureUtils.get(task, timeout, timeUnit);
     }
 
     private <T> T internalRetry(long interval, long timeout, TimeUnit timeUnit, final int attempts, Callable<T> callable)

@@ -19,6 +19,7 @@ package org.wikimedia.elasticsearch.swift.repositories;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.IndexCommit;
+import org.elasticsearch.ElasticsearchTimeoutException;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.cluster.metadata.MetaData;
@@ -54,7 +55,6 @@ import java.util.Map;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -211,10 +211,10 @@ public class SwiftRepository extends BlobStoreRepository {
             try {
                 long remaining_ns = Math.max(nanoTimeLimit - System.nanoTime(), 0);
 
-                task.get(remaining_ns, TimeUnit.NANOSECONDS);
+                FutureUtils.get(task, remaining_ns, TimeUnit.NANOSECONDS);
             }
-            catch (TimeoutException e){
-                logger.warn("Timed out deleting blob [" + blobName + "], snapshot ["+ operationId + "]. Cancelling task");
+            catch (ElasticsearchTimeoutException e){
+                logger.warn("Timed out deleting blob [" + blobName + "], snapshot ["+ operationId + "]. Cancelling task", e);
                 FutureUtils.cancel(task);
                 failedCount++;
             }
@@ -256,10 +256,10 @@ public class SwiftRepository extends BlobStoreRepository {
             try {
                 long remaining_ns = Math.max(nanoTimeLimit - System.nanoTime(), 0);
 
-                task.get(remaining_ns, TimeUnit.NANOSECONDS);
+                FutureUtils.get(task, remaining_ns, TimeUnit.NANOSECONDS);
             }
-            catch (TimeoutException e){
-                logger.warn("Timed out writing blob [" + blobName + "], snapshot ["+ operationId + "]. Cancelling task");
+            catch (ElasticsearchTimeoutException e){
+                logger.warn("Timed out writing blob [" + blobName + "], snapshot ["+ operationId + "]. Cancelling task", e);
                 FutureUtils.cancel(task);
                 failedCount++;
             }
