@@ -16,6 +16,7 @@
 
 package org.wikimedia.elasticsearch.swift.util.retry;
 
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.threadpool.ThreadPool;
 
 import java.util.concurrent.Callable;
@@ -29,12 +30,18 @@ public interface WithTimeout {
     <T> T timeout(long timeout, TimeUnit timeUnit, Callable<T> callable) throws Exception;
 
     class Factory {
+        private final Logger logger;
+
+        public Factory(Logger logger){
+            this.logger = logger;
+        }
+
         public WithTimeout from(ThreadPool threadPool){
             if (threadPool == null){
                 return new WithTimeoutDirectImpl();
             }
 
-            return new WithTimeoutExecutorImpl(threadPool.generic());
+            return new WithTimeoutExecutorImpl(threadPool.generic(), logger);
         }
     }
 }

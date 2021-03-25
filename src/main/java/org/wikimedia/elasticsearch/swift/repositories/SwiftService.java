@@ -59,7 +59,7 @@ public class SwiftService extends AbstractLifecycleComponent {
     public SwiftService(Settings envSettings, ThreadPool threadPool) {
         this.threadPool = threadPool;
         allowCaching = SwiftRepository.Swift.ALLOW_CACHING_SETTING.get(envSettings);
-        withTimeoutFactory = new WithTimeout.Factory();
+        withTimeoutFactory = new WithTimeout.Factory(logger);
         retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
         shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
         allowConcurrentIO = SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(envSettings);

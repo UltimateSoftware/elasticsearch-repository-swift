@@ -26,9 +26,11 @@ import java.util.concurrent.TimeoutException;
 
 class WithTimeoutExecutorImpl implements WithTimeout {
     private final ExecutorService executorService;
+    private final Logger logger;
 
-    WithTimeoutExecutorImpl(ExecutorService executorService) {
+    WithTimeoutExecutorImpl(ExecutorService executorService, Logger logger){
         this.executorService = executorService;
+        this.logger = logger;
     }
 
     @Override
@@ -63,12 +65,17 @@ class WithTimeoutExecutorImpl implements WithTimeout {
                 return callable.call();
             }
             catch (InterruptedException e) {
+                logger.error("Execution interrupted", e);
                 throw e;
             }
             catch (Exception e) {
                 if (count < attempts){
+                    logger.error("Exception occurred, will retry", e);
                     //noinspection BusyWait
                     Thread.sleep(sleepMillis, sleepNanos);
+                }
+                else {
+                    logger.error("Exception occurred, will not retry", e);
                 }
             }
         }
