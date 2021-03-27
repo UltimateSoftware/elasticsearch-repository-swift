@@ -451,8 +451,8 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                 } catch (Exception e) {
                     try {
                         close();
-                    } catch (IOException ex) {
-                        logger.error("Exception closing inner stream", ex);
+                    } catch (IOException ioe) {
+                        logger.error("Exception closing inner stream", ioe);
                     }
                     throw new BlobStoreException("failure reading from [" + objectName + "]", e);
                 }
