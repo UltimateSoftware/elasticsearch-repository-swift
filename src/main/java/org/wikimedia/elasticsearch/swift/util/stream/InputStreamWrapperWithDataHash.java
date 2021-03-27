@@ -100,18 +100,18 @@ public class InputStreamWrapperWithDataHash extends InputStream {
     }
 
     /**
-     * Invoke read(byte[], int, int) on inner stream. DO NOT implement overloads.
+     * Invoke read(byte[]) on inner stream. DO NOT implement overloads.
      * @param b byte buffer
      * @return bytes actually read, or -1 on EOF
      * @throws IOException on I/O error
      * @see     InputStream#read(byte[])
      */
     protected int innerRead(byte[] b) throws IOException {
-        int read = innerStream.read(b);
-        if (read == -1){
+        int bytesRead = innerStream.read(b);
+        if (bytesRead == -1){
             innerStream.close();
         }
-        return read;
+        return bytesRead;
     }
 
     @Override
