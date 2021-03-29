@@ -42,7 +42,7 @@ ext {
     httpcoreVersion = '4.4.12'
     javaxActivationVersion = '1.1'
     junitVersion = '4.12'
-    jossVersion = '0.10.3'
+    jossVersion = '0.10.4'
     slf4jVersion = '1.7.26'
 }
 
