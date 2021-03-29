@@ -414,7 +414,12 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                     objectInfo.size = storedObject.getContentLength();
                     objectInfo.tag = storedObject.getEtag();
                     return objectInfo;
-                } catch (NotFoundException e) {
+                }
+                catch (NotFoundException e) {
+                    if (objectInfo != null && objectInfo.stream != null){
+                        objectInfo.stream.close();
+                    }
+
                     // this conversion is necessary for tests to pass
                     String message = "cannot read object, it does not exist [" + objectName + "]";
                     logger.warn(message);
@@ -423,13 +428,12 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                     return e2;
                 }
                 catch (Exception e){
-                    logger.warn("cannot read object [" + objectName + "]", e);
-                    throw e;
-                }
-                finally {
                     if (objectInfo != null && objectInfo.stream != null){
                         objectInfo.stream.close();
                     }
+
+                    logger.warn("cannot read object [" + objectName + "]", e);
+                    throw e;
                 }
             }));
 
