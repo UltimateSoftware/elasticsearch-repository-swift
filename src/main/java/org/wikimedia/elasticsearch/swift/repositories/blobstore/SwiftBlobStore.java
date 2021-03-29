@@ -91,13 +91,15 @@ public class SwiftBlobStore implements BlobStore {
     }
 
     private WithTimeout withTimeout(){
-        return withTimeoutFactory.from(repository != null && allowConcurrentIO ? repository.threadPool() : null);
+        return repository != null && allowConcurrentIO
+                ? withTimeoutFactory.create(repository.threadPool())
+                : withTimeoutFactory.createWithoutPool();
     }
 
     /**
      * Initialize container lazily. Do not produce a storm of Swift requests.
      * @return the container
-     * @throws Exception from retry()
+     * @throws Exception create retry()
      */
     public Container getContainer() throws Exception {
         if (container.get() != null) {

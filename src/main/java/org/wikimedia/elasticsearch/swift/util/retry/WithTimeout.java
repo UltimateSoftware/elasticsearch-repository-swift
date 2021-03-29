@@ -36,12 +36,16 @@ public interface WithTimeout {
             this.logger = logger;
         }
 
-        public WithTimeout from(ThreadPool threadPool){
+        public WithTimeout create(ThreadPool threadPool){
             if (threadPool == null){
                 return new WithTimeoutDirectImpl();
             }
 
             return new WithTimeoutExecutorImpl(threadPool.generic(), logger);
+        }
+
+        public WithTimeout createWithoutPool(){
+            return new WithTimeoutDirectImpl();
         }
     }
 }

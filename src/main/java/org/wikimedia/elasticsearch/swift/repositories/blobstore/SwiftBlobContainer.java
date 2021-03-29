@@ -116,7 +116,9 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     }
 
     private WithTimeout withTimeout() {
-        return withTimeoutFactory.from(repository != null && allowConcurrentIO ? repository.threadPool() : null);
+        return repository != null && allowConcurrentIO
+                ? withTimeoutFactory.create(repository.threadPool())
+                : withTimeoutFactory.createWithoutPool();
     }
 
     /**

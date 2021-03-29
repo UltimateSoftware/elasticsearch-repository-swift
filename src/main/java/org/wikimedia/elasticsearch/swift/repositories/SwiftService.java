@@ -67,7 +67,9 @@ public class SwiftService extends AbstractLifecycleComponent {
     }
 
     private WithTimeout withTimeout() {
-        return withTimeoutFactory.from(this.threadPool != null && allowConcurrentIO ? this.threadPool : null);
+        return threadPool != null && allowConcurrentIO
+                ? withTimeoutFactory.create(threadPool)
+                : withTimeoutFactory.createWithoutPool();
     }
 
     /**
