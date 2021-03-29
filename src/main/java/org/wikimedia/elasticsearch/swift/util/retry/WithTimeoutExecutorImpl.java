@@ -38,19 +38,37 @@ class WithTimeoutExecutorImpl implements WithTimeout {
     @Override
     public <T> T retry(long interval, long timeout, TimeUnit timeUnit, Callable<T> callable) {
         Future<T> task = executorService.submit(() -> internalRetry(interval, timeout, timeUnit, Integer.MAX_VALUE, callable));
-        return FutureUtils.get(task, timeout, timeUnit);
+        try{
+            return FutureUtils.get(task, timeout, timeUnit);
+        }
+        catch (Exception e){
+            FutureUtils.cancel(task);
+            throw e;
+        }
     }
 
     @Override
     public <T> T retry(long interval, long timeout, TimeUnit timeUnit, int attempts, Callable<T> callable) {
         Future<T> task = executorService.submit(() -> internalRetry(interval, timeout, timeUnit, attempts, callable));
-        return FutureUtils.get(task, timeout, timeUnit);
+        try{
+            return FutureUtils.get(task, timeout, timeUnit);
+        }
+        catch (Exception e){
+            FutureUtils.cancel(task);
+            throw e;
+        }
     }
 
     @Override
     public <T> T timeout(long timeout, TimeUnit timeUnit, Callable<T> callable) {
         Future<T> task = executorService.submit(callable);
-        return FutureUtils.get(task, timeout, timeUnit);
+        try{
+            return FutureUtils.get(task, timeout, timeUnit);
+        }
+        catch (Exception e){
+            FutureUtils.cancel(task);
+            throw e;
+        }
     }
 
     private <T> T internalRetry(long interval, long timeout, TimeUnit timeUnit, final int attempts, Callable<T> callable)
