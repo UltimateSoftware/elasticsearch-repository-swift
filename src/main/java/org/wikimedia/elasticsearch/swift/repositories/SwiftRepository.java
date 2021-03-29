@@ -19,7 +19,6 @@ package org.wikimedia.elasticsearch.swift.repositories;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.IndexCommit;
-import org.elasticsearch.ElasticsearchTimeoutException;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.cluster.metadata.MetaData;
@@ -213,11 +212,6 @@ public class SwiftRepository extends BlobStoreRepository {
 
                 FutureUtils.get(task, remaining_ns, TimeUnit.NANOSECONDS);
             }
-            catch (ElasticsearchTimeoutException e){
-                logger.warn("Timed out deleting blob [" + blobName + "], snapshot ["+ operationId + "]. Cancelling task", e);
-                FutureUtils.cancel(task);
-                failedCount++;
-            }
             catch (Exception e) {
                 logger.warn("Failed to delete blob [" + blobName + "], snapshot ["+ operationId + "]. Cancelling task", e);
                 FutureUtils.cancel(task);
@@ -257,11 +251,6 @@ public class SwiftRepository extends BlobStoreRepository {
                 long remaining_ns = Math.max(nanoTimeLimit - System.nanoTime(), 0);
 
                 FutureUtils.get(task, remaining_ns, TimeUnit.NANOSECONDS);
-            }
-            catch (ElasticsearchTimeoutException e){
-                logger.warn("Timed out writing blob [" + blobName + "], snapshot ["+ operationId + "]. Cancelling task", e);
-                FutureUtils.cancel(task);
-                failedCount++;
             }
             catch (Exception e) {
                 logger.warn("Failed to write blob [" + blobName + "], snapshot ["+ operationId + "]. Cancelling task", e);
