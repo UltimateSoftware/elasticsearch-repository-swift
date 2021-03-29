@@ -17,7 +17,6 @@
 package org.wikimedia.elasticsearch.swift.repositories.blobstore;
 
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -52,7 +51,7 @@ public class SwiftBlobStore implements BlobStore {
         return envSettings;
     }
 
-    private final AtomicReference<Container> container = new AtomicReference<>(null);
+    private Container container = null;
 
     private final Settings settings;
     private final Account auth;
@@ -102,12 +101,18 @@ public class SwiftBlobStore implements BlobStore {
      * @throws Exception create retry()
      */
     public Container getContainer() throws Exception {
-        if (container.get() != null) {
-            return container.get();
+        if (container != null) {
+            return container;
         }
 
-        container.compareAndSet(null, internalGetContainer());
-        return container.get();
+        synchronized(this){
+            if (container != null) {
+                return container;
+            }
+
+            container = internalGetContainer();
+            return container;
+        }
     }
 
     private Container internalGetContainer() throws Exception {
