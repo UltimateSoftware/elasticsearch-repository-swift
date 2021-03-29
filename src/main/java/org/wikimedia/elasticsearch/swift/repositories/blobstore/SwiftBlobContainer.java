@@ -404,38 +404,38 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      * @throws Exception on timeout, I/O errors
      */
     private ObjectInfo getObjectInfo(String objectName) throws Exception {
-        Object result = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
-            () -> SwiftPerms.execThrows(() -> {
-                ObjectInfo objectInfo = null;
-                try {
-                    StoredObject storedObject = blobStore.getContainer().getObject(objectName);
-                    objectInfo = new ObjectInfo();
-                    objectInfo.stream = storedObject.downloadObjectAsInputStream();
-                    objectInfo.size = storedObject.getContentLength();
-                    objectInfo.tag = storedObject.getEtag();
-                    return objectInfo;
+        // don't retry, the caller already retries it
+        Object result = SwiftPerms.execThrows(() -> {
+            ObjectInfo objectInfo = null;
+            try {
+                StoredObject storedObject = blobStore.getContainer().getObject(objectName);
+                objectInfo = new ObjectInfo();
+                objectInfo.stream = storedObject.downloadObjectAsInputStream();
+                objectInfo.size = storedObject.getContentLength();
+                objectInfo.tag = storedObject.getEtag();
+                return objectInfo;
+            }
+            catch (NotFoundException e) {
+                if (objectInfo != null && objectInfo.stream != null){
+                    objectInfo.stream.close();
                 }
-                catch (NotFoundException e) {
-                    if (objectInfo != null && objectInfo.stream != null){
-                        objectInfo.stream.close();
-                    }
 
-                    // this conversion is necessary for tests to pass
-                    String message = "cannot read object, it does not exist [" + objectName + "]";
-                    logger.warn(message);
-                    NoSuchFileException e2 = new NoSuchFileException(message);
-                    e2.initCause(e);
-                    return e2;
+                // this conversion is necessary for tests to pass
+                String message = "cannot read object, it does not exist [" + objectName + "]";
+                logger.warn(message);
+                NoSuchFileException e2 = new NoSuchFileException(message);
+                e2.initCause(e);
+                return e2;
+            }
+            catch (Exception e){
+                if (objectInfo != null && objectInfo.stream != null){
+                    objectInfo.stream.close();
                 }
-                catch (Exception e){
-                    if (objectInfo != null && objectInfo.stream != null){
-                        objectInfo.stream.close();
-                    }
 
-                    logger.warn("cannot read object [" + objectName + "]", e);
-                    throw e;
-                }
-            }));
+                logger.warn("cannot read object [" + objectName + "]", e);
+                throw e;
+            }
+            });
 
         if (result instanceof ObjectInfo){
             return (ObjectInfo) result;
