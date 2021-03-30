@@ -166,6 +166,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                     logger.warn(message);
                     NoSuchFileException e2 = new NoSuchFileException(message);
                     e2.initCause(e);
+                    // do not rethrow, there is no reason to delete a missing object
                     return e2;
                 }
                 catch (Exception e) {
@@ -342,7 +343,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         try {
             return withTimeout().retry(retryIntervalS, longOperationTimeoutS, TimeUnit.SECONDS, retryCount, () -> {
                 try {
-                    ObjectInfo object = getObjectInfo(objectName); //retries internally
+                    ObjectInfo object = getObjectInfo(objectName);
 
                     if (streamRead) {
                         return wrapObjectStream(objectName, object);
@@ -355,6 +356,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                         object.stream.close();
                     }
                 }
+                // if object is missing, retry (i.e., rethrow) - Swift's consistency level does not read own writes
                 catch(Exception e){
                     logger.warn("failed to read object [" + objectName + "]", e);
                     throw e;
@@ -405,7 +407,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      */
     private ObjectInfo getObjectInfo(String objectName) throws Exception {
         // don't retry, the caller already retries it
-        Object result = SwiftPerms.execThrows(() -> {
+        return SwiftPerms.execThrows(() -> {
             ObjectInfo objectInfo = null;
             try {
                 StoredObject storedObject = blobStore.getContainer().getObject(objectName);
@@ -425,7 +427,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                 logger.warn(message);
                 NoSuchFileException e2 = new NoSuchFileException(message);
                 e2.initCause(e);
-                return e2;
+                throw e2;
             }
             catch (Exception e){
                 if (objectInfo != null && objectInfo.stream != null){
@@ -434,14 +436,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
                 logger.warn("cannot read object [" + objectName + "]", e);
                 throw e;
-            }
-            });
-
-        if (result instanceof ObjectInfo){
-            return (ObjectInfo) result;
-        }
-
-        throw (Exception) result;
+            }});
     }
 
     private InputStreamWrapperWithDataHash wrapObjectStream(String objectName, ObjectInfo object) {
