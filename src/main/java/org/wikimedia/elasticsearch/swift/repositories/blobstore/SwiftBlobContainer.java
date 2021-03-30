@@ -347,7 +347,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                         return wrapObjectStream(objectName, object);
                     }
 
-                    // I/O operations are timed. May throw on hash mismatch
+                    // May throw on hash mismatch
                     try {
                         return objectToReentrantStream(objectName, object.stream, object.size, object.tag);
                     } finally {
@@ -383,10 +383,14 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                           boolean failIfAlreadyExists) throws IOException {
         if (executor != null && allowConcurrentIO && !streamWrite) {
             // async execution races against the InputStream closed in the caller. Read all data locally.
-            InputStream capturedStream = streamToReentrantStream(in, blobSize, true, false);
+            InputStream capturedStream = streamToReentrantStream(in, blobSize, true);
 
             Future<Void> task = executor.submit(() -> {
-                internalWriteBlob(blobName, capturedStream, blobSize, failIfAlreadyExists);
+                try {
+                    internalWriteBlob(blobName, capturedStream, blobSize, failIfAlreadyExists);
+                } finally {
+                    capturedStream.close();
+                }
                 return null;
             });
 
@@ -446,7 +450,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             @Override
             protected int innerRead(byte[] b) {
                 try {
-                    return withTimeout().timeout(shortOperationTimeoutS, TimeUnit.SECONDS, () -> super.innerRead(b));
+                    return super.innerRead(b);
                 } catch (Exception e) {
                     try {
                         close();
@@ -472,7 +476,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                                                 InputStream rawInputStream,
                                                 long size,
                                                 String objectEtag) throws IOException {
-        InputStream objectStream = streamToReentrantStream(rawInputStream, size, false, true);
+        InputStream objectStream = streamToReentrantStream(rawInputStream, size, false);
         String dataEtag = DigestUtils.md5Hex(objectStream);
 
         if (dataEtag.equalsIgnoreCase(objectEtag)) {
@@ -495,14 +499,12 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
      * @param in server input stream
      * @param sizeHint size hint, do not trust it
      * @param forceRead force reading into memory
-     * @param useReadTimeout should read be timed? (only if actual I/O is happening, not memory duplication)
      * @return re-entrant stream holding the blob
      * @throws IOException on I/O error
      */
     private InputStream streamToReentrantStream(InputStream in,
                                                 long sizeHint,
-                                                boolean forceRead,
-                                                boolean useReadTimeout) throws IOException {
+                                                boolean forceRead) throws IOException {
         if (!forceRead && in.markSupported()) {
             return in;
         }
@@ -517,7 +519,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         };
 
         while (true) {
-            int read = useReadTimeout ? readWithTimeout(in, buffer) : in.read(buffer);
+            int read = in.read(buffer);
             if (read == -1){
                 break;
             }
@@ -525,18 +527,6 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         }
 
         return new ByteArrayInputStream(baos.toByteArray());
-    }
-
-    private int readWithTimeout(InputStream in, final byte[] buffer) throws IOException {
-        try {
-            return withTimeout().timeout(shortOperationTimeoutS, TimeUnit.SECONDS, () -> in.read(buffer));
-        }
-        catch (IOException e){
-            throw e;
-        }
-        catch(Exception e){
-            throw new BlobStoreException("stream read failed", e);
-        }
     }
 
     private void internalWriteBlob(String blobName, InputStream fromStream, long blobSize, boolean failIfAlreadyExists) throws IOException {
@@ -548,39 +538,39 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
         try {
             IOException exception = withTimeout().retry(retryIntervalS, longOperationTimeoutS, TimeUnit.SECONDS, retryCount,
-                    () -> SwiftPerms.execThrows(() -> {
-                        try {
-                            StoredObject object = blobStore.getContainer().getObject(objectName);
+                () -> SwiftPerms.execThrows(() -> {
+                    try {
+                        StoredObject object = blobStore.getContainer().getObject(objectName);
 
-                            if (failIfAlreadyExists && blobExistsCheckAllowed && object.exists()) {
-                                return new FileAlreadyExistsException("object [" + objectName + "] already exists, cannot overwrite");
-                            }
-
-                            UploadInstructions instructions = new UploadInstructions(fromStream);
-
-                            if (fromStream.markSupported()){
-                                String dataEtag = DigestUtils.md5Hex(fromStream);
-                                instructions.setMd5(dataEtag);
-                                fromStream.reset();
-                            }
-
-                            object.uploadObject(instructions);
-                            if (logger.isDebugEnabled()){
-                                logger.debug("uploaded object [" + objectName + "], size=[" + blobSize + "], md5=[" +
-                                             instructions.getMd5() + "]");
-                            }
-                            return null;
+                        if (failIfAlreadyExists && blobExistsCheckAllowed && object.exists()) {
+                            return new FileAlreadyExistsException("object [" + objectName + "] already exists, cannot overwrite");
                         }
-                        catch (Exception e) {
-                            logger.warn("cannot write object [" + objectName + "]", e);
 
-                            if (fromStream.markSupported()){
-                                fromStream.reset();
-                            }
+                        UploadInstructions instructions = new UploadInstructions(fromStream);
 
-                            throw e;
+                        if (fromStream.markSupported()){
+                            String dataEtag = DigestUtils.md5Hex(fromStream);
+                            instructions.setMd5(dataEtag);
+                            fromStream.reset();
                         }
-                    }));
+
+                        object.uploadObject(instructions);
+                        if (logger.isDebugEnabled()){
+                            logger.debug("uploaded object [" + objectName + "], size=[" + blobSize + "], md5=[" +
+                                         instructions.getMd5() + "]");
+                        }
+                        return null;
+                    }
+                    catch (Exception e) {
+                        logger.warn("cannot write object [" + objectName + "]", e);
+
+                        if (fromStream.markSupported()){
+                            fromStream.reset();
+                        }
+
+                        throw e;
+                    }
+                }));
 
             if (exception != null) {
                 throw exception;
