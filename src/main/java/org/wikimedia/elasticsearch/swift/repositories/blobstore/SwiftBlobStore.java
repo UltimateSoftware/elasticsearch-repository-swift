@@ -45,15 +45,12 @@ public class SwiftBlobStore implements BlobStore {
     private final String containerName;
 
     private final Settings envSettings;
-    private final Boolean allowConcurrentIO;
-
     public Settings getEnvSettings() {
         return envSettings;
     }
 
-    private Container container = null;
+    private volatile Container container = null;
 
-    private final Settings settings;
     private final Account auth;
     
     private final SwiftRepository repository;
@@ -77,7 +74,6 @@ public class SwiftBlobStore implements BlobStore {
                           final Account auth,
                           final String containerName) {
         this.repository = repository;
-        this.settings = settings;
         this.envSettings = envSettings;
         this.auth = auth;
         this.containerName = containerName;
@@ -86,13 +82,10 @@ public class SwiftBlobStore implements BlobStore {
         retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
         retryCount = SwiftRepository.Swift.RETRY_COUNT_SETTING.get(envSettings);
         shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
-        allowConcurrentIO = SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(envSettings);
     }
 
     private WithTimeout withTimeout(){
-        return repository != null && allowConcurrentIO
-                ? withTimeoutFactory.create(repository.threadPool())
-                : withTimeoutFactory.createWithoutPool();
+        return repository != null ? withTimeoutFactory.create(envSettings) : withTimeoutFactory.createWithoutPool();
     }
 
     /**
@@ -155,10 +148,6 @@ public class SwiftBlobStore implements BlobStore {
      */
     @Override
     public void close() {
-    }
-
-    public Settings getSettings() {
-        return settings;
     }
 
     public SwiftRepository getRepository() {
