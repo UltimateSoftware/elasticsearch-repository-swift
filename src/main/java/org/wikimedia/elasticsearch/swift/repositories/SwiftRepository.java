@@ -131,7 +131,7 @@ public class SwiftRepository extends BlobStoreRepository {
     // Chunk size.
     private final ByteSizeValue chunkSize;
 
-    private final Settings settings;
+    private final Settings repoSettings;
     private final Settings envSettings;
 
     private final ConcurrentHashMap<String, Future<DeleteResult>> blobDeletionTasks = new ConcurrentHashMap<>();
@@ -143,7 +143,7 @@ public class SwiftRepository extends BlobStoreRepository {
      *
      * @param metadata
      *            repository meta data
-     * @param settings
+     * @param repoSettings
      *            repo settings
      * @param envSettings
      *            global settings
@@ -156,15 +156,15 @@ public class SwiftRepository extends BlobStoreRepository {
      */
     @Inject
     public SwiftRepository(final RepositoryMetaData metadata,
-                           final Settings settings,
+                           final Settings repoSettings,
                            final Settings envSettings,
                            final NamedXContentRegistry namedXContentRegistry,
                            final ThreadPool threadPool,
                            final SwiftAccountFactory accountFactory) {
-        super(metadata, Swift.COMPRESS_SETTING.get(settings), namedXContentRegistry, threadPool);
-        this.settings = settings;
+        super(metadata, Swift.COMPRESS_SETTING.get(repoSettings), namedXContentRegistry, threadPool);
+        this.repoSettings = repoSettings;
         this.envSettings = envSettings;
-        this.chunkSize = Swift.CHUNK_SIZE_SETTING.get(settings);
+        this.chunkSize = Swift.CHUNK_SIZE_SETTING.get(repoSettings);
         this.basePath = BlobPath.cleanPath();
         this.accountFactory = accountFactory;
     }
@@ -317,19 +317,19 @@ public class SwiftRepository extends BlobStoreRepository {
     }
 
     protected BlobStore createBlobStore() {
-        String username = Swift.USERNAME_SETTING.get(settings);
-        String password = Swift.PASSWORD_SETTING.get(settings);
-        String tenantName = Swift.TENANTNAME_SETTING.get(settings);
-        String domainName = Swift.DOMAINNAME_SETTING.get(settings);
-        String authMethod = Swift.AUTHMETHOD_SETTING.get(settings);
-        String preferredRegion = Swift.PREFERRED_REGION_SETTING.get(settings);
+        String username = Swift.USERNAME_SETTING.get(repoSettings);
+        String password = Swift.PASSWORD_SETTING.get(repoSettings);
+        String tenantName = Swift.TENANTNAME_SETTING.get(repoSettings);
+        String domainName = Swift.DOMAINNAME_SETTING.get(repoSettings);
+        String authMethod = Swift.AUTHMETHOD_SETTING.get(repoSettings);
+        String preferredRegion = Swift.PREFERRED_REGION_SETTING.get(repoSettings);
 
-        String containerName = Swift.CONTAINER_SETTING.get(settings);
+        String containerName = Swift.CONTAINER_SETTING.get(repoSettings);
         if (containerName == null) {
             throw new RepositoryException(metadata.name(), "No container defined for swift repository");
         }
 
-        String url = Swift.URL_SETTING.get(settings);
+        String url = Swift.URL_SETTING.get(repoSettings);
         if (url == null) {
             throw new RepositoryException(metadata.name(), "No url defined for swift repository");
         }
@@ -342,7 +342,7 @@ public class SwiftRepository extends BlobStoreRepository {
             authMethod,
             preferredRegion);
 
-        return new SwiftBlobStore(this, settings, envSettings, account, containerName);
+        return new SwiftBlobStore(this, repoSettings, envSettings, account, containerName);
     }
 
     /**
