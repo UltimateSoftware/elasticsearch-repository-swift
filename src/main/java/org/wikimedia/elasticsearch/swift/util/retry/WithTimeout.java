@@ -22,7 +22,7 @@ import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.threadpool.ExecutorBuilder;
 import org.elasticsearch.threadpool.ScalingExecutorBuilder;
 import org.elasticsearch.threadpool.ThreadPool;
-import org.wikimedia.elasticsearch.swift.SwiftRepositoryPlugin;
+import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
@@ -43,8 +43,15 @@ public interface WithTimeout {
             this.logger = logger;
         }
 
+        public ExecutorBuilder<?> createExecutorBuilder() {
+            return new ScalingExecutorBuilder(SwiftRepository.Swift.PREFIX,
+                1,
+                SwiftRepository.Swift.MAX_IO_REQUESTS.get(settings),
+                TimeValue.timeValueMinutes(1));
+        }
+
         public WithTimeout create(ThreadPool threadPool){
-            return new WithTimeoutExecutorImpl(threadPool.executor(SwiftRepositoryPlugin.SwiftExecutorName), logger);
+            return new WithTimeoutExecutorImpl(threadPool.executor(SwiftRepository.Swift.PREFIX), logger);
         }
 
         public WithTimeout createWithoutPool(){

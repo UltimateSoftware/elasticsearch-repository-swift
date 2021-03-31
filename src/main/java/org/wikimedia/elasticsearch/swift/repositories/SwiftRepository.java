@@ -60,13 +60,15 @@ import java.util.concurrent.TimeUnit;
  * The blob store repository. A glorified settings wrapper.
  */
 public class SwiftRepository extends BlobStoreRepository {
-    // The internal "type" for Elasticsearch
+    // The internal "type" for Elasticsearch Swift repository
     public static final String TYPE = "swift";
 
     /**
      * Swift repository settings
      */
     public interface Swift {
+        String PREFIX = "repository_swift";
+
         Setting<String> CONTAINER_SETTING = Setting.simpleString("swift_container");
         Setting<String> URL_SETTING = Setting.simpleString("swift_url");
         Setting<String> AUTHMETHOD_SETTING = Setting.simpleString("swift_authmethod");
@@ -78,49 +80,52 @@ public class SwiftRepository extends BlobStoreRepository {
         Setting<ByteSizeValue> CHUNK_SIZE_SETTING = Setting.byteSizeSetting("chunk_size",
                                                                             new ByteSizeValue(5, ByteSizeUnit.GB));
         Setting<Boolean> COMPRESS_SETTING = Setting.boolSetting("compress", false);
-        Setting<Boolean> MINIMIZE_BLOB_EXISTS_CHECKS_SETTING = Setting.boolSetting("repository_swift.minimize_blob_exists_checks",
+        Setting<Boolean> MINIMIZE_BLOB_EXISTS_CHECKS_SETTING = Setting.boolSetting(PREFIX+".minimize_blob_exists_checks",
                                                                                    true,
                                                                                     Setting.Property.NodeScope);
-        Setting<Boolean> ALLOW_CACHING_SETTING = Setting.boolSetting("repository_swift.allow_caching",
+        Setting<Boolean> ALLOW_CACHING_SETTING = Setting.boolSetting(PREFIX+".allow_caching",
                                                                      true,
                                                                      Setting.Property.NodeScope);
 
-        Setting<Long> DELETE_TIMEOUT_MIN_SETTING = Setting.longSetting("repository_swift.delete_timeout_min",
-                60,
-                0,
-                Setting.Property.NodeScope);
+        Setting<Integer> MAX_IO_REQUESTS = Setting.intSetting(PREFIX+".max_io_requests",
+            10,
+            Setting.Property.NodeScope);
 
-        Setting<Integer> SNAPSHOT_TIMEOUT_MIN_SETTING = Setting.intSetting("repository_swift.snapshot_timeout_min",
-                360,
-                Setting.Property.NodeScope);
+        Setting<Integer> DELETE_TIMEOUT_MIN_SETTING = Setting.intSetting(PREFIX+".delete_timeout_min",
+            60,
+            Setting.Property.NodeScope);
 
-        Setting<Integer> SHORT_OPERATION_TIMEOUT_S_SETTING = Setting.intSetting("repository_swift.short_operation_timeout_s",
-                30,
-                Setting.Property.NodeScope);
+        Setting<Integer> SNAPSHOT_TIMEOUT_MIN_SETTING = Setting.intSetting(PREFIX+".snapshot_timeout_min",
+            360,
+            Setting.Property.NodeScope);
 
-        Setting<Integer> LONG_OPERATION_TIMEOUT_S_SETTING = Setting.intSetting("repository_swift.long_operation_timeout_s",
-                600,
-                Setting.Property.NodeScope);
+        Setting<Integer> SHORT_OPERATION_TIMEOUT_S_SETTING = Setting.intSetting(PREFIX+".short_operation_timeout_s",
+            30,
+            Setting.Property.NodeScope);
 
-        Setting<Integer> RETRY_INTERVAL_S_SETTING = Setting.intSetting("repository_swift.retry_interval_s",
-                10,
-                Setting.Property.NodeScope);
+        Setting<Integer> LONG_OPERATION_TIMEOUT_S_SETTING = Setting.intSetting(PREFIX+".long_operation_timeout_s",
+            600,
+            Setting.Property.NodeScope);
 
-        Setting<Integer> RETRY_COUNT_SETTING = Setting.intSetting("repository_swift.retry_count",
-                3,
-                Setting.Property.NodeScope);
+        Setting<Integer> RETRY_INTERVAL_S_SETTING = Setting.intSetting(PREFIX+".retry_interval_s",
+            10,
+            Setting.Property.NodeScope);
 
-        Setting<Boolean> ALLOW_CONCURRENT_IO_SETTING = Setting.boolSetting("repository_swift.allow_concurrent_io",
-                true,
-                Setting.Property.NodeScope);
+        Setting<Integer> RETRY_COUNT_SETTING = Setting.intSetting(PREFIX+".retry_count",
+            3,
+            Setting.Property.NodeScope);
 
-        Setting<Boolean> STREAM_READ_SETTING = Setting.boolSetting("repository_swift.stream_read",
-                true,
-                Setting.Property.NodeScope);
+        Setting<Boolean> ALLOW_CONCURRENT_IO_SETTING = Setting.boolSetting(PREFIX+".allow_concurrent_io",
+            true,
+            Setting.Property.NodeScope);
 
-        Setting<Boolean> STREAM_WRITE_SETTING = Setting.boolSetting("repository_swift.stream_write",
-                false,
-                Setting.Property.NodeScope);
+        Setting<Boolean> STREAM_READ_SETTING = Setting.boolSetting(PREFIX+".stream_read",
+            true,
+            Setting.Property.NodeScope);
+
+        Setting<Boolean> STREAM_WRITE_SETTING = Setting.boolSetting(PREFIX+".stream_write",
+            false,
+            Setting.Property.NodeScope);
     }
 
     private static final Logger logger = LogManager.getLogger(SwiftRepository.class);
