@@ -116,7 +116,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     }
 
     private WithTimeout withTimeout() {
-        return repository != null ? withTimeoutFactory.create(blobStore.getEnvSettings()) : withTimeoutFactory.createWithoutPool();
+        return repository != null ? withTimeoutFactory.create(repository.threadPool()) : withTimeoutFactory.createWithoutPool();
     }
 
     /**
@@ -341,6 +341,8 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         try {
             return withTimeout().retry(retryIntervalS, longOperationTimeoutS, TimeUnit.SECONDS, retryCount, () -> {
                 try {
+                    //return SwiftPerms.execThrows(() -> blobStore.getContainer().getObject(objectName).downloadObjectAsInputStream());
+
                     ObjectInfo object = getObjectInfo(objectName);
 
                     if (streamRead) {

@@ -17,16 +17,21 @@
 package org.wikimedia.elasticsearch.swift;
 
 import org.elasticsearch.common.settings.Setting;
+import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.env.Environment;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.plugins.RepositoryPlugin;
 import org.elasticsearch.repositories.Repository;
+import org.elasticsearch.threadpool.ExecutorBuilder;
+import org.elasticsearch.threadpool.ScalingExecutorBuilder;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftService;
 import org.wikimedia.elasticsearch.swift.repositories.account.SwiftAccountFactoryImpl;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -78,5 +83,20 @@ public class SwiftRepositoryPlugin extends Plugin implements RepositoryPlugin {
                              SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING,
                              SwiftRepository.Swift.STREAM_READ_SETTING,
                              SwiftRepository.Swift.STREAM_WRITE_SETTING);
+    }
+
+    public static final String SwiftExecutorName = "swift";
+
+    @Override
+    public List<ExecutorBuilder<?>> getExecutorBuilders(Settings settings) {
+        int halfOfProcessorCount = Runtime.getRuntime().availableProcessors() / 2;
+        int maxPoolSize = Math.min(5, halfOfProcessorCount); //based on ES docs for snapshot thread pool size
+        return new ArrayList<ExecutorBuilder<?>>() {{
+            add(new ScalingExecutorBuilder(SwiftExecutorName,
+                    1,
+                    maxPoolSize,
+                    TimeValue.timeValueMinutes(1),
+                    SwiftExecutorName));
+        }};
     }
 }

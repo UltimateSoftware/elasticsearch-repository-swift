@@ -85,7 +85,7 @@ public class SwiftBlobStore implements BlobStore {
     }
 
     private WithTimeout withTimeout(){
-        return repository != null ? withTimeoutFactory.create(envSettings) : withTimeoutFactory.createWithoutPool();
+        return repository != null ? withTimeoutFactory.create(repository.threadPool()) : withTimeoutFactory.createWithoutPool();
     }
 
     /**

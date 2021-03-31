@@ -17,11 +17,10 @@
 package org.wikimedia.elasticsearch.swift.util.retry;
 
 import org.apache.logging.log4j.Logger;
-import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.common.util.concurrent.EsExecutors;
-import org.elasticsearch.common.util.concurrent.ThreadContext;
+import org.elasticsearch.threadpool.ThreadPool;
+import org.wikimedia.elasticsearch.swift.SwiftRepositoryPlugin;
+
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public interface WithTimeout {
@@ -34,35 +33,12 @@ public interface WithTimeout {
     class Factory {
         private final Logger logger;
 
-        private static volatile ExecutorService executorService;
-
-        private static ExecutorService getExecutorService(final Settings settings){
-            if (executorService != null){
-                return executorService;
-            }
-
-            synchronized (Factory.class){
-                if (executorService != null){
-                    return executorService;
-                }
-
-                executorService = EsExecutors.newScaling("swift",
-                    1,
-                    EsExecutors.numberOfProcessors(settings),
-                    1, TimeUnit.MINUTES,
-                    EsExecutors.daemonThreadFactory("swift"),
-                    new ThreadContext(settings));
-
-                return executorService;
-            }
-        }
-
         public Factory(Logger logger){
             this.logger = logger;
         }
 
-        public WithTimeout create(Settings settings){
-            return new WithTimeoutExecutorImpl(getExecutorService(settings), logger);
+        public WithTimeout create(ThreadPool threadPool){
+            return new WithTimeoutExecutorImpl(threadPool.executor(SwiftRepositoryPlugin.SwiftExecutorName), logger);
         }
 
         public WithTimeout createWithoutPool(){
