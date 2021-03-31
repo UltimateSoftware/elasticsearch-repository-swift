@@ -185,16 +185,16 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             Container container = blobStore.getContainer();
             ContainerPaginationMap containerPaginationMap = new ContainerPaginationMap(container, keyPath, container.getMaxPageSize());
             Collection<StoredObject> containerObjects = withTimeout().retry(
-                retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
-                () -> SwiftPerms.exec( () -> {
-                    try {
-                        return containerPaginationMap.listAllItems();
-                    }
-                    catch (Exception e) {
-                        logger.warn("cannot list items in [" + keyPath + "]", e);
-                        throw e;
-                    }
-                }));
+                retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount, () ->
+                    SwiftPerms.exec( () -> {
+                        try {
+                            return containerPaginationMap.listAllItems();
+                        }
+                        catch (Exception e) {
+                            logger.warn("cannot list items in [" + keyPath + "]", e);
+                            throw e;
+                        }
+                    }));
 
             DeleteResult results = DeleteResult.ZERO;
 
@@ -230,32 +230,33 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         String directoryKey = blobNamePrefix == null ? keyPath : buildKey(blobNamePrefix);
         try {
             Collection<DirectoryOrObject> directoryList = withTimeout().retry(
-                retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
-                () -> SwiftPerms.execThrows(() -> {
-                    try {
-                        return blobStore.getContainer().listDirectory(new Directory(directoryKey, '/'));
-                    }
-                    catch (Exception e) {
-                        logger.warn("Cannot list blobs in directory [" + directoryKey + "]", e);
-                        throw e;
-                    }
-                }));
+                retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount, () ->
+                    SwiftPerms.execThrows(() -> {
+                        try {
+                            return blobStore.getContainer().listDirectory(new Directory(directoryKey, '/'));
+                        }
+                        catch (Exception e) {
+                            logger.warn("Cannot list blobs in directory [" + directoryKey + "]", e);
+                            throw e;
+                        }
+                    }));
 
             HashMap<String, PlainBlobMetaData> blobMap = new HashMap<>();
 
             for (DirectoryOrObject obj: directoryList) {
                 if (obj.isObject()) {
                     String name = obj.getName().substring(keyPath.length());
-                    Long length = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
-                        () -> SwiftPerms.exec(() -> {
-                            try {
-                                return obj.getAsObject().getContentLength();
-                            }
-                            catch (Exception e) {
-                                logger.warn("Cannot get object [" + obj.getName() + "]", e);
-                                throw e;
-                            }
-                        }));
+                    Long length = withTimeout().retry(
+                        retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount, () ->
+                            SwiftPerms.exec(() -> {
+                                try {
+                                    return obj.getAsObject().getContentLength();
+                                }
+                                catch (Exception e) {
+                                    logger.warn("Cannot get object [" + obj.getName() + "]", e);
+                                    throw e;
+                                }
+                            }));
                     PlainBlobMetaData meta = new PlainBlobMetaData(name, length);
                     blobMap.put(name, meta);
                 }
@@ -283,16 +284,16 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     public Map<String, BlobContainer> children() throws IOException{
         Collection<DirectoryOrObject> objects;
         try {
-            objects = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
-                    () -> SwiftPerms.execThrows(() -> {
-                        try {
-                            return blobStore.getContainer().listDirectory(new Directory(keyPath, '/'));
-                        }
-                        catch (Exception e) {
-                            logger.warn("cannot list children for [" + keyPath + "]", e);
-                            throw e;
-                        }
-                    }));
+            objects = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount, () ->
+                SwiftPerms.execThrows(() -> {
+                    try {
+                        return blobStore.getContainer().listDirectory(new Directory(keyPath, '/'));
+                    }
+                    catch (Exception e) {
+                        logger.warn("cannot list children for [" + keyPath + "]", e);
+                        throw e;
+                    }
+                }));
         }
         catch (IOException | RuntimeException e) {
             throw e;
@@ -341,8 +342,6 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         try {
             return withTimeout().retry(retryIntervalS, longOperationTimeoutS, TimeUnit.SECONDS, retryCount, () -> {
                 try {
-                    //return SwiftPerms.execThrows(() -> blobStore.getContainer().getObject(objectName).downloadObjectAsInputStream());
-
                     ObjectInfo object = getObjectInfo(objectName);
 
                     if (streamRead) {
@@ -539,8 +538,8 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         }
 
         try {
-            IOException exception = withTimeout().retry(retryIntervalS, longOperationTimeoutS, TimeUnit.SECONDS, retryCount,
-                () -> SwiftPerms.execThrows(() -> {
+            IOException exception = withTimeout().retry(retryIntervalS, longOperationTimeoutS, TimeUnit.SECONDS, retryCount, () ->
+                SwiftPerms.execThrows(() -> {
                     try {
                         StoredObject object = blobStore.getContainer().getObject(objectName);
 
