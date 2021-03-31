@@ -78,7 +78,7 @@ public class SwiftBlobStore implements BlobStore {
         this.auth = auth;
         this.containerName = containerName;
         bufferSizeInBytes = repoSettings.getAsBytesSize("buffer_size", new ByteSizeValue(100, ByteSizeUnit.KB)).getBytes();
-        withTimeoutFactory = new WithTimeout.Factory(logger);
+        withTimeoutFactory = new WithTimeout.Factory(envSettings, logger);
         retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
         retryCount = SwiftRepository.Swift.RETRY_COUNT_SETTING.get(envSettings);
         shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);

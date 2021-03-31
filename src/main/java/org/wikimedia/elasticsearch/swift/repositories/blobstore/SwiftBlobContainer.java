@@ -100,7 +100,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         allowConcurrentIO = SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(envSettings) &&
             executor instanceof ThreadPoolExecutor && ((ThreadPoolExecutor)executor).getMaximumPoolSize() > 2;
 
-        withTimeoutFactory = new WithTimeout.Factory(logger);
+        withTimeoutFactory = new WithTimeout.Factory(envSettings, logger);
 
         String pathString = path.buildAsString();
         keyPath = pathString.isEmpty() || pathString.endsWith("/") ? pathString : pathString + "/";

@@ -17,6 +17,10 @@
 package org.wikimedia.elasticsearch.swift.util.retry;
 
 import org.apache.logging.log4j.Logger;
+import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.threadpool.ExecutorBuilder;
+import org.elasticsearch.threadpool.ScalingExecutorBuilder;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.wikimedia.elasticsearch.swift.SwiftRepositoryPlugin;
 
@@ -32,8 +36,10 @@ public interface WithTimeout {
 
     class Factory {
         private final Logger logger;
+        private final Settings settings;
 
-        public Factory(Logger logger){
+        public Factory(Settings settings, Logger logger){
+            this.settings = settings;
             this.logger = logger;
         }
 

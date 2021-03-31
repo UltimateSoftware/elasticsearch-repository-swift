@@ -45,7 +45,6 @@ public class SwiftService extends AbstractLifecycleComponent {
     private final int retryIntervalS;
     private final int shortOperationTimeoutS;
     private final int retryCount;
-    private final Settings envSettings;
 
     /**
      * Constructor
@@ -58,9 +57,8 @@ public class SwiftService extends AbstractLifecycleComponent {
     @Inject
     public SwiftService(Settings envSettings, ThreadPool threadPool) {
         this.threadPool = threadPool;
-        this.envSettings = envSettings;
         allowCaching = SwiftRepository.Swift.ALLOW_CACHING_SETTING.get(envSettings);
-        withTimeoutFactory = new WithTimeout.Factory(logger);
+        withTimeoutFactory = new WithTimeout.Factory(envSettings, logger);
         retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
         shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
         retryCount = SwiftRepository.Swift.RETRY_COUNT_SETTING.get(envSettings);

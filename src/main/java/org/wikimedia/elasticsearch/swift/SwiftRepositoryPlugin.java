@@ -16,6 +16,8 @@
 
 package org.wikimedia.elasticsearch.swift;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.TimeValue;
@@ -41,6 +43,8 @@ import java.util.Map;
  * Our base plugin stuff.
  */
 public class SwiftRepositoryPlugin extends Plugin implements RepositoryPlugin {
+    private static final Logger logger = LogManager.getLogger(SwiftRepositoryPlugin.class);
+
     @Override
     public Map<String, Repository.Factory> getRepositories(final Environment env,
                                                            final NamedXContentRegistry registry,
