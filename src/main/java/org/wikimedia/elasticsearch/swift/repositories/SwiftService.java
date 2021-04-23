@@ -44,7 +44,6 @@ public class SwiftService extends AbstractLifecycleComponent {
     private final ThreadPool threadPool;
     private final int retryIntervalS;
     private final int shortOperationTimeoutS;
-    private final Boolean allowConcurrentIO;
     private final int retryCount;
 
     /**
@@ -59,15 +58,14 @@ public class SwiftService extends AbstractLifecycleComponent {
     public SwiftService(Settings envSettings, ThreadPool threadPool) {
         this.threadPool = threadPool;
         allowCaching = SwiftRepository.Swift.ALLOW_CACHING_SETTING.get(envSettings);
-        withTimeoutFactory = new WithTimeout.Factory();
+        withTimeoutFactory = new WithTimeout.Factory(envSettings, logger);
         retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
         shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
-        allowConcurrentIO = SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(envSettings);
         retryCount = SwiftRepository.Swift.RETRY_COUNT_SETTING.get(envSettings);
     }
 
     private WithTimeout withTimeout() {
-        return withTimeoutFactory.from(this.threadPool != null && allowConcurrentIO ? this.threadPool : null);
+        return threadPool != null ? withTimeoutFactory.create(threadPool) : withTimeoutFactory.createWithoutPool();
     }
 
     /**

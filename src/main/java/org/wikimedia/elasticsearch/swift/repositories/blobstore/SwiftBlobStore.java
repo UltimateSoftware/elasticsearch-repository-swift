@@ -17,7 +17,6 @@
 package org.wikimedia.elasticsearch.swift.repositories.blobstore;
 
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -46,15 +45,12 @@ public class SwiftBlobStore implements BlobStore {
     private final String containerName;
 
     private final Settings envSettings;
-    private final Boolean allowConcurrentIO;
-
     public Settings getEnvSettings() {
         return envSettings;
     }
 
-    private final AtomicReference<Container> container = new AtomicReference<>(null);
+    private volatile Container container = null;
 
-    private final Settings settings;
     private final Account auth;
     
     private final SwiftRepository repository;
@@ -67,45 +63,49 @@ public class SwiftBlobStore implements BlobStore {
     /**
      * Constructor. Sets up the container mostly.
      * @param repository owning repository
-     * @param settings Settings for our repository. Only care about buffer size.
+     * @param repoSettings Settings for our repository. Only care about buffer size.
      * @param envSettings global settings
      * @param auth swift account info
      * @param containerName swift container
      */
     public SwiftBlobStore(SwiftRepository repository,
-                          Settings settings,
+                          Settings repoSettings,
                           Settings envSettings,
                           final Account auth,
                           final String containerName) {
         this.repository = repository;
-        this.settings = settings;
         this.envSettings = envSettings;
         this.auth = auth;
         this.containerName = containerName;
-        bufferSizeInBytes = settings.getAsBytesSize("buffer_size", new ByteSizeValue(100, ByteSizeUnit.KB)).getBytes();
-        withTimeoutFactory = new WithTimeout.Factory();
+        bufferSizeInBytes = repoSettings.getAsBytesSize("buffer_size", new ByteSizeValue(100, ByteSizeUnit.KB)).getBytes();
+        withTimeoutFactory = new WithTimeout.Factory(envSettings, logger);
         retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
         retryCount = SwiftRepository.Swift.RETRY_COUNT_SETTING.get(envSettings);
         shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
-        allowConcurrentIO = SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING.get(envSettings);
     }
 
     private WithTimeout withTimeout(){
-        return withTimeoutFactory.from(repository != null && allowConcurrentIO ? repository.threadPool() : null);
+        return repository != null ? withTimeoutFactory.create(repository.threadPool()) : withTimeoutFactory.createWithoutPool();
     }
 
     /**
      * Initialize container lazily. Do not produce a storm of Swift requests.
      * @return the container
-     * @throws Exception from retry()
+     * @throws Exception create retry()
      */
     public Container getContainer() throws Exception {
-        if (container.get() != null) {
-            return container.get();
+        if (container != null) {
+            return container;
         }
 
-        container.compareAndSet(null, internalGetContainer());
-        return container.get();
+        synchronized(this){
+            if (container != null) {
+                return container;
+            }
+
+            container = internalGetContainer();
+            return container;
+        }
     }
 
     private Container internalGetContainer() throws Exception {
@@ -148,10 +148,6 @@ public class SwiftBlobStore implements BlobStore {
      */
     @Override
     public void close() {
-    }
-
-    public Settings getSettings() {
-        return settings;
     }
 
     public SwiftRepository getRepository() {
