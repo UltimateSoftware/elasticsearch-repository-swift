@@ -39,7 +39,8 @@ import org.javaswift.joss.model.StoredObject;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
 import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
-import org.wikimedia.elasticsearch.swift.util.stream.InputStreamWrapperWithDataHash;
+import org.wikimedia.elasticsearch.swift.util.stream.DataHashInputStream;
+import org.wikimedia.elasticsearch.swift.util.stream.JossInputStream;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -442,26 +443,12 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             }});
     }
 
-    private InputStreamWrapperWithDataHash wrapObjectStream(String objectName, ObjectInfo object) {
+    private InputStream wrapObjectStream(String objectName, ObjectInfo object) {
         if (logger.isDebugEnabled()){
             logger.debug("wrapping object in unbuffered stream [" + objectName + "], size=[" + object.size +
                     "], md5=[" + object.tag + "]");
         }
-        return new InputStreamWrapperWithDataHash(objectName, object.stream, object.tag){
-            @Override
-            protected int innerRead(byte[] b) {
-                try {
-                    return super.innerRead(b);
-                } catch (Exception e) {
-                    try {
-                        close();
-                    } catch (IOException ioe) {
-                        logger.error("Exception closing inner stream", ioe);
-                    }
-                    throw new BlobStoreException("failure reading from [" + objectName + "]", e);
-                }
-            }
-        };
+        return new DataHashInputStream(objectName, new JossInputStream(object.stream), object.tag);
     }
 
     /**
@@ -512,7 +499,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
         final int bufferSize = (int) blobStore.getBufferSizeInBytes();
         final byte[] buffer = new byte[bufferSize];
-        ByteArrayOutputStream baos = new ByteArrayOutputStream(sizeHint > 0 ? (int) sizeHint : bufferSize) {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(sizeHint > 0 ? (int)sizeHint : bufferSize) {
             @Override
             public byte[] toByteArray() {
                 return buf;
