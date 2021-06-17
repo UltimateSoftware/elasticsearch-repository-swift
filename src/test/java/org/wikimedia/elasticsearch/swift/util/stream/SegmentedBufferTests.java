@@ -13,13 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.wikimedia.elasticsearch.swift;
+package org.wikimedia.elasticsearch.swift.util.stream;
 
 import org.apache.lucene.util.LuceneTestCase;
+import org.elasticsearch.common.Randomness;
 import org.junit.Before;
-import org.wikimedia.elasticsearch.swift.util.stream.SegmentedBuffer;
-
-import java.util.Random;
 
 public class SegmentedBufferTests extends LuceneTestCase {
     private SegmentedBuffer buffer;
@@ -41,7 +39,7 @@ public class SegmentedBufferTests extends LuceneTestCase {
 
     public void testPutAcrossSegments(){
         byte[] data = new byte[SegmentedBuffer.SEGMENT_SIZE*2];
-        new Random().nextBytes(data);
+        Randomness.get().nextBytes(data);
         int offset = 0;
 
         while (offset < data.length){
@@ -73,7 +71,7 @@ public class SegmentedBufferTests extends LuceneTestCase {
     public void testSetPosInTheFirstSegment(){
         byte[] data = new byte[128];
         final int newpos = 10;
-        new Random().nextBytes(data);
+        Randomness.get().nextBytes(data);
 
         buffer.put(data);
         buffer.setPos(newpos);
@@ -94,7 +92,7 @@ public class SegmentedBufferTests extends LuceneTestCase {
         byte[] data = new byte[128];
         buffer = new SegmentedBuffer(data.length);
         final int newpos = 10;
-        new Random().nextBytes(data);
+        Randomness.get().nextBytes(data);
 
         buffer.put(data);
         buffer.put(data);

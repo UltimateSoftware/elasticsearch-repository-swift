@@ -20,17 +20,17 @@ import java.util.LinkedList;
 
 // class meant to be package private.
 // This class is not re-entrant
-public class SegmentedBuffer {
+class SegmentedBuffer {
     public static final int SEGMENT_SIZE = 1024*1024;
 
     private final LinkedList<byte[]> segments = new LinkedList<>();
     private long pos = 0;
     private long stored = 0;
 
-    public SegmentedBuffer() {
+    SegmentedBuffer() {
     }
 
-    public SegmentedBuffer(long sizeHint) {
+    SegmentedBuffer(long sizeHint) {
         // handle small-ish buffers. Other hint values else will use default segments
         if (sizeHint > 0 && sizeHint < SEGMENT_SIZE){
             addSegment(sizeHint);
