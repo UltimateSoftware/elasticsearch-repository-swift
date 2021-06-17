@@ -106,6 +106,20 @@ class SegmentedBuffer {
         return written;
     }
 
+    public void put(byte b){
+        final SegmentPosInfo currentSegment = getCurrentSegmentInfo();
+        if (currentSegment.availableToPut == 0){
+            addSegment(SEGMENT_SIZE);
+            currentSegment.segment = segments.getLast();
+            currentSegment.pos = 0;
+            currentSegment.availableToPut = SEGMENT_SIZE;
+        }
+
+        currentSegment.segment[(int) currentSegment.pos] = b;
+        pos++;
+        stored++;
+    }
+
     public int put(final byte[] b) {
         return put(b, 0, b.length);
     }
