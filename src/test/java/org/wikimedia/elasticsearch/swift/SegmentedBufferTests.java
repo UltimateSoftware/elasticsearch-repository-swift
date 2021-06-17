@@ -36,7 +36,7 @@ public class SegmentedBufferTests extends LuceneTestCase {
         buffer = new SegmentedBuffer(data.length);
         int written = buffer.put(data);
 
-        assertEquals(written, data.length);
+        assertEquals(data.length, written);
     }
 
     public void testPutAcrossSegments(){
@@ -50,7 +50,7 @@ public class SegmentedBufferTests extends LuceneTestCase {
         }
 
         buffer.setPos(0);
-        assertEquals(buffer.available(), data.length);
+        assertEquals(data.length, buffer.available());
 
         byte[] compare = new byte[data.length];
         offset = 0;
@@ -68,5 +68,48 @@ public class SegmentedBufferTests extends LuceneTestCase {
 
     public void testGetWhenBufferIsEmptyReturnsEOF(){
         assertEquals(buffer.get(), -1);
+    }
+
+    public void testSetPosInTheFirstSegment(){
+        byte[] data = new byte[128];
+        final int newpos = 10;
+        new Random().nextBytes(data);
+
+        buffer.put(data);
+        buffer.setPos(newpos);
+
+        assertEquals(data.length - newpos, buffer.available());
+        byte[] compare = new byte[data.length];
+        byte[] subData = new byte[data.length-newpos];
+        System.arraycopy(data, newpos, subData, 0,data.length-newpos);
+        int read = buffer.get(compare);
+        byte[] subCompare = new byte[read];
+        System.arraycopy(compare, 0, subCompare, 0, read);
+
+        assertEquals(data.length - newpos, read);
+        assertArrayEquals(subData, subCompare);
+    }
+
+    public void testSetPosInThe2ndSegment(){
+        byte[] data = new byte[128];
+        buffer = new SegmentedBuffer(data.length);
+        final int newpos = 10;
+        new Random().nextBytes(data);
+
+        buffer.put(data);
+        buffer.put(data);
+        buffer.setPos(data.length+newpos);
+
+        assertEquals(data.length - newpos, buffer.available());
+
+        byte[] compare = new byte[data.length];
+        byte[] subData = new byte[data.length-newpos];
+        System.arraycopy(data, newpos, subData, 0,data.length-newpos);
+        int read = buffer.get(compare);
+        byte[] subCompare = new byte[read];
+        System.arraycopy(compare, 0, subCompare, 0, read);
+
+        assertEquals(data.length - newpos, read);
+        assertArrayEquals(subData, subCompare);
     }
 }

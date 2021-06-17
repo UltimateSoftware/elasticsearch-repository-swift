@@ -23,11 +23,8 @@ import java.util.LinkedList;
 public class SegmentedBuffer {
     public static final int SEGMENT_SIZE = 1024*1024;
 
-    private LinkedList<byte[]> segments = new LinkedList<>();
-    private byte[] currentSegment = null;
+    private final LinkedList<byte[]> segments = new LinkedList<>();
     private long pos = 0;
-    private int posInSegment = -1;
-    private int segmentIndex = -1;
     private long stored = 0;
 
     public SegmentedBuffer() {
@@ -35,20 +32,47 @@ public class SegmentedBuffer {
 
     public SegmentedBuffer(long sizeHint) {
         // handle small-ish buffers. Other hint values else will use default segments
-        if (sizeHint >0 && sizeHint < SEGMENT_SIZE){
+        if (sizeHint > 0 && sizeHint < SEGMENT_SIZE){
             addSegment(sizeHint);
         }
     }
 
     private void addSegment(long size){
-        currentSegment = new byte[(int) size];
-        posInSegment = 0;
-        segments.add(currentSegment);
-        segmentIndex = segments.size()-1;
+        segments.add(new byte[(int) size]);
     }
 
-    private void addSegment(){
-        addSegment(SEGMENT_SIZE);
+    private static class SegmentPosInfo {
+        byte[] segment;
+        long pos;
+        long availableToPut;
+        long availableToGet;
+    }
+
+    private SegmentPosInfo getCurrentSegmentInfo(){
+        SegmentPosInfo result = new SegmentPosInfo();
+
+        if (segments.isEmpty()){
+            addSegment(SEGMENT_SIZE);
+        }
+
+        byte[] firstSegment = segments.get(0);
+        if (pos < firstSegment.length) {
+            result.segment = firstSegment;
+            result.pos = pos;
+            result.availableToPut = firstSegment.length - pos;
+            result.availableToGet = Math.min(stored - pos, firstSegment.length - pos);
+            return result;
+        }
+
+        long segIndex = (pos - firstSegment.length)/SEGMENT_SIZE + 1;
+        if (segIndex < segments.size()) {
+            result.segment = segments.get((int) segIndex);
+            result.availableToPut = SEGMENT_SIZE - result.pos;
+            result.availableToGet = Math.min(stored - pos, SEGMENT_SIZE - result.pos);
+        }
+        result.pos = (pos - firstSegment.length)%SEGMENT_SIZE;
+
+        return result;
     }
 
     public long available() {
@@ -64,46 +88,20 @@ public class SegmentedBuffer {
             throw new IllegalArgumentException("pos cannot exceed stored size or be negative");
         }
         this.pos = pos;
-
-        long posPastSegment = 0;
-        segmentIndex = -1;
-        for (byte[] seg: segments) {
-            segmentIndex++;
-            posPastSegment += seg.length;
-            if (posPastSegment > pos){
-                currentSegment = seg;
-                posInSegment = (int)(pos - (posPastSegment - seg.length));
-                break;
-            }
-        }
-    }
-
-    private byte[] getCurrentSegment(){
-        if (currentSegment != null){
-            return currentSegment;
-        }
-
-        if (segments.isEmpty()){
-            addSegment();
-            return currentSegment;
-        }
-
-        throw new IllegalStateException("currentSegment should be set");
-    }
-
-    private int availableInSegment(){
-        return getCurrentSegment().length - posInSegment;
     }
 
     public int put(final byte[] b, final int off, final int len){
-        if (availableInSegment() == 0){
-            addSegment();
+        final SegmentPosInfo currentSegment = getCurrentSegmentInfo();
+        if (currentSegment.availableToPut == 0){
+            addSegment(SEGMENT_SIZE);
+            currentSegment.segment = segments.getLast();
+            currentSegment.pos = 0;
+            currentSegment.availableToPut = SEGMENT_SIZE;
         }
 
-        int written = Math.min(availableInSegment(), len);
-        System.arraycopy(b, off, currentSegment, posInSegment, written);
+        int written = Math.min((int)currentSegment.availableToPut, len);
+        System.arraycopy(b, off, currentSegment.segment, (int)currentSegment.pos, written);
         pos += written;
-        posInSegment += written;
         stored += written;
         return written;
     }
@@ -117,20 +115,11 @@ public class SegmentedBuffer {
             return -1;
         }
 
-        int read = Math.min(availableInSegment(), len);
-        System.arraycopy(currentSegment, posInSegment, b, off, read);
+        final SegmentPosInfo currentSegment = getCurrentSegmentInfo();
+        int read = (int) Math.min(currentSegment.availableToGet, len);
+        System.arraycopy(currentSegment.segment, (int) currentSegment.pos, b, off, read);
         pos += read;
-        posInSegment += read;
-        advanceSegmentIfNeeded();
         return read;
-    }
-
-    private void advanceSegmentIfNeeded() {
-        if (posInSegment >= currentSegment.length){
-            posInSegment = 0;
-            segmentIndex++;
-            currentSegment = segmentIndex < segments.size() ? segments.get(segmentIndex) : null;
-        }
     }
 
     public int get(final byte[] b){
@@ -142,10 +131,9 @@ public class SegmentedBuffer {
             return -1;
         }
 
-        int result = currentSegment[posInSegment];
+        final SegmentPosInfo currentSegment = getCurrentSegmentInfo();
+        int result = currentSegment.segment[(int) currentSegment.pos];
         pos++;
-        posInSegment++;
-        advanceSegmentIfNeeded();
         return result;
     }
 }
