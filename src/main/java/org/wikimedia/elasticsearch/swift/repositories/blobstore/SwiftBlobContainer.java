@@ -41,9 +41,9 @@ import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 import org.wikimedia.elasticsearch.swift.util.stream.DataHashInputStream;
 import org.wikimedia.elasticsearch.swift.util.stream.JossInputStream;
+import org.wikimedia.elasticsearch.swift.util.stream.SegmentedMemoryInputStream;
+import org.wikimedia.elasticsearch.swift.util.stream.SegmentedMemoryOutputStream;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.IOException;
 import java.nio.file.FileAlreadyExistsException;
@@ -499,22 +499,17 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
         final int bufferSize = (int) blobStore.getBufferSizeInBytes();
         final byte[] buffer = new byte[bufferSize];
-        ByteArrayOutputStream baos = new ByteArrayOutputStream(sizeHint > 0 ? (int)sizeHint : bufferSize) {
-            @Override
-            public byte[] toByteArray() {
-                return buf;
-            }
-        };
+        SegmentedMemoryOutputStream mos = new SegmentedMemoryOutputStream(sizeHint);
 
         while (true) {
             int read = in.read(buffer);
             if (read == -1){
                 break;
             }
-            baos.write(buffer, 0, read);
+            mos.write(buffer, 0, read);
         }
 
-        return new ByteArrayInputStream(baos.toByteArray());
+        return new SegmentedMemoryInputStream(mos);
     }
 
     private void internalWriteBlob(String blobName, InputStream fromStream, long blobSize, boolean failIfAlreadyExists) throws IOException {
