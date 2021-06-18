@@ -27,6 +27,7 @@ public class SegmentedMemoryInputStream extends InputStream {
     public SegmentedMemoryInputStream(SegmentedMemoryOutputStream mos) {
         buffer = mos.getBuffer();
         buffer.setPos(0);
+        mos.close();
     }
 
     @Override

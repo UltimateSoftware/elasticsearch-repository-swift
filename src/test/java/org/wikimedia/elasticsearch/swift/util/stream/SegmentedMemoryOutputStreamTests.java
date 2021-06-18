@@ -30,6 +30,25 @@ public class SegmentedMemoryOutputStreamTests extends LuceneTestCase {
         stream = new SegmentedMemoryOutputStream();
     }
 
+    public void testEmptyStreamHasNothingAvailableToRead() throws IOException {
+        SegmentedMemoryInputStream smis = new SegmentedMemoryInputStream(stream);
+
+        assertEquals(0, smis.available());
+    }
+
+    public void testInputStreamClosesOutputStream() throws IOException {
+        byte[] data = new byte[128];
+        stream.write(data);
+        SegmentedMemoryInputStream smis = new SegmentedMemoryInputStream(stream);
+
+        try {
+            stream.write("abc".getBytes());
+            fail("Expected IOException");
+        }
+        catch (IOException ignored) {
+        }
+    }
+
     public void testWriteCompletelyWritesOutData() throws IOException {
         stream = new SegmentedMemoryOutputStream(16);
         byte[] data = new byte[128];
@@ -52,5 +71,24 @@ public class SegmentedMemoryOutputStreamTests extends LuceneTestCase {
 
         assertEquals(data.length, offset);
         assertArrayEquals(data, compare);
+    }
+
+    public void testWriteCanSave2Gigs() throws IOException {
+        final byte[] meg = new byte[1024*1024];
+        final long megCount = 1024*2+1;
+
+        for (int i = 0; i < megCount; i++) {
+            stream.write(meg);
+        }
+
+        SegmentedMemoryInputStream smis = new SegmentedMemoryInputStream(stream);
+        long totalAvailable = 0;
+        do {
+            int available = smis.available();
+            totalAvailable += available;
+            smis.skip(available);
+        } while (smis.available() > 0);
+
+        assertEquals(meg.length * megCount, totalAvailable);
     }
 }
