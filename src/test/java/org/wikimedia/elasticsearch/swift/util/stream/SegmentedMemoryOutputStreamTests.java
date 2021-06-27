@@ -30,6 +30,37 @@ public class SegmentedMemoryOutputStreamTests extends LuceneTestCase {
         stream = new SegmentedMemoryOutputStream();
     }
 
+    private void readToEndAndCompare(SegmentedMemoryInputStream readStream, byte[] expected) throws IOException {
+        byte[] compare = new byte[expected.length];
+
+        int offset = 0;
+        int read = 0;
+        while (read != -1){
+            offset += read;
+            if (offset > expected.length){
+                break;
+            }
+            read = readStream.read(compare, offset, expected.length-offset);
+        }
+
+        assertEquals(-1, read);
+        assertEquals(expected.length, offset);
+        assertArrayEquals(expected, compare);
+    }
+
+    public void testMarkAndResetReadStreamFromBeginning() throws IOException {
+        byte[] data = new byte[128];
+        Randomness.get().nextBytes(data);
+        stream.write(data);
+
+        SegmentedMemoryInputStream smis = new SegmentedMemoryInputStream(stream);
+        smis.mark(0);
+
+        readToEndAndCompare(smis, data);
+        smis.reset();
+        readToEndAndCompare(smis, data);
+    }
+
     public void testEmptyStreamHasNothingAvailableToRead() throws IOException {
         SegmentedMemoryInputStream smis = new SegmentedMemoryInputStream(stream);
 
@@ -42,7 +73,7 @@ public class SegmentedMemoryOutputStreamTests extends LuceneTestCase {
         SegmentedMemoryInputStream smis = new SegmentedMemoryInputStream(stream);
 
         try {
-            stream.write("abc".getBytes());
+            stream.write(data);
             fail("Expected IOException");
         }
         catch (IOException ignored) {
@@ -53,24 +84,12 @@ public class SegmentedMemoryOutputStreamTests extends LuceneTestCase {
         stream = new SegmentedMemoryOutputStream(16);
         byte[] data = new byte[128];
         Randomness.get().nextBytes(data);
-        byte[] compare = new byte[data.length];
-
         stream.write(data);
         SegmentedMemoryInputStream readStream = new SegmentedMemoryInputStream(stream);
 
         assertEquals(data.length, readStream.available());
 
-        int offset = 0;
-        while (offset < data.length){
-            int read = readStream.read(compare, offset, data.length-offset);
-            if (read == -1){
-                break;
-            }
-            offset += read;
-        }
-
-        assertEquals(data.length, offset);
-        assertArrayEquals(data, compare);
+        readToEndAndCompare(readStream, data);
     }
 
     public void testWriteCanSave2Gigs() throws IOException {
