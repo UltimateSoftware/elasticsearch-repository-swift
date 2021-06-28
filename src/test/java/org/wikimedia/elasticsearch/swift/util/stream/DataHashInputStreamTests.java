@@ -19,6 +19,7 @@ package org.wikimedia.elasticsearch.swift.util.stream;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.lucene.util.LuceneTestCase;
 import org.elasticsearch.common.Randomness;
+import org.elasticsearch.common.blobstore.BlobStoreException;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -57,7 +58,7 @@ public class DataHashInputStreamTests extends LuceneTestCase {
         assertArrayEquals(data, compare);
     }
 
-    public void testRead_WhenHashIsWrong_Throws() {
+    public void testRead_WhenHashIsWrong_Throws() throws IOException {
         String hash = DigestUtils.md5Hex("");
         stream = new DataHashInputStream("fail", new ByteArrayInputStream(data), hash);
         byte[] compare = new byte[data.length];
@@ -67,8 +68,7 @@ public class DataHashInputStreamTests extends LuceneTestCase {
             try {
                 read = stream.read(compare);
             }
-            catch (IOException ex){
-                assertTrue(ex.getMessage().startsWith("Mismatched hash"));
+            catch (BlobStoreException ex){
                 return;
             }
         }

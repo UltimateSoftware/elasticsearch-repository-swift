@@ -37,7 +37,7 @@ public class DataHashInputStream extends ProxyInputStream {
         this.dataHash = dataHash;
     }
 
-    private void digestAfterRead(int b) throws IOException {
+    private void digestAfterRead(int b) {
         if (b == -1) {
             onEof();
         }
@@ -46,7 +46,7 @@ public class DataHashInputStream extends ProxyInputStream {
         }
     }
 
-    private void digestAfterRead(final byte[] buf, final int off, final int len) throws IOException {
+    private void digestAfterRead(final byte[] buf, final int off, final int len) {
         if (len == -1) {
             onEof();
         }
@@ -55,13 +55,13 @@ public class DataHashInputStream extends ProxyInputStream {
         }
     }
 
-    private void onEof() throws IOException {
+    private void onEof() {
         if (actualDataHash == null) {
             actualDataHash = Hex.encodeHexString(digest.digest());
         }
 
         if (!dataHash.equalsIgnoreCase(actualDataHash)) {
-            throw new IOException("Mismatched hash on stream for [" + objectName + "], expected [" + dataHash +
+            throw new BlobStoreException("Mismatched hash on stream for [" + objectName + "], expected [" + dataHash +
                 "], actual [" + actualDataHash + "]");
         }
     }
