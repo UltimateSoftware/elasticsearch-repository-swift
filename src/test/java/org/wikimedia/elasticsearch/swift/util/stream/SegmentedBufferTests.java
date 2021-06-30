@@ -64,6 +64,36 @@ public class SegmentedBufferTests extends LuceneTestCase {
         assertArrayEquals(data, compare);
     }
 
+    public void testPutAcrossSegmentsWithoutAlignment(){
+        byte[] data = new byte[SegmentedBuffer.SEGMENT_SIZE*2-100];
+        Randomness.get().nextBytes(data);
+        int offset = 0;
+        final int chunkSize = 102400;
+
+        assertTrue(chunkSize % SegmentedBuffer.SEGMENT_SIZE != 0);
+
+        while (offset < data.length){
+            int written = buffer.put(data, offset, Math.min(data.length-offset, chunkSize));
+            offset += written;
+        }
+
+        buffer.setPos(0);
+        assertEquals(data.length, buffer.available());
+
+        byte[] compare = new byte[data.length];
+        offset = 0;
+
+        while (offset < compare.length){
+            int read = buffer.get(compare, offset, Math.min(compare.length-offset, chunkSize));
+            if (read == -1){
+                break;
+            }
+            offset += read;
+        }
+
+        assertArrayEquals(data, compare);
+    }
+
     public void testGetWhenBufferIsEmptyReturnsEOF(){
         assertEquals(buffer.get(), -1);
     }

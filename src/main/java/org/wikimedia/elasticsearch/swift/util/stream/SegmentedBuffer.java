@@ -67,10 +67,10 @@ class SegmentedBuffer {
         long segIndex = (pos - firstSegment.length)/SEGMENT_SIZE + 1;
         if (segIndex < segments.size()) {
             result.segment = segments.get((int) segIndex);
+            result.pos = (pos - firstSegment.length)%SEGMENT_SIZE;
             result.availableToPut = SEGMENT_SIZE - result.pos;
             result.availableToGet = Math.min(stored - pos, SEGMENT_SIZE - result.pos);
         }
-        result.pos = (pos - firstSegment.length)%SEGMENT_SIZE;
 
         return result;
     }
