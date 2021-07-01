@@ -52,7 +52,6 @@ import org.wikimedia.elasticsearch.swift.repositories.blobstore.SwiftBlobStore;
 
 import java.util.List;
 import java.util.Map;
-
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -122,6 +121,10 @@ public class SwiftRepository extends BlobStoreRepository {
 
         Setting<Boolean> STREAM_WRITE_SETTING = Setting.boolSetting(PREFIX+".stream_write",
             false,
+            Setting.Property.NodeScope);
+
+        Setting<String> BLOB_LOCAL_DIR_SETTING = Setting.simpleString(PREFIX + ".blob_local_dir",
+            "/tmp/"+PREFIX,
             Setting.Property.NodeScope);
     }
 

@@ -27,6 +27,7 @@ import org.elasticsearch.common.blobstore.BlobStoreException;
 import org.elasticsearch.common.blobstore.DeleteResult;
 import org.elasticsearch.common.blobstore.support.AbstractBlobContainer;
 import org.elasticsearch.common.blobstore.support.PlainBlobMetaData;
+import org.elasticsearch.common.io.PathUtils;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -42,22 +43,25 @@ import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 import org.wikimedia.elasticsearch.swift.util.stream.DataHashInputStream;
 import org.wikimedia.elasticsearch.swift.util.stream.JossInputStream;
-import org.wikimedia.elasticsearch.swift.util.stream.SegmentedMemoryInputStream;
-import org.wikimedia.elasticsearch.swift.util.stream.SegmentedMemoryOutputStream;
+import org.wikimedia.elasticsearch.swift.util.stream.LocalBlobInputStream;
 
 import java.io.InputStream;
 import java.io.IOException;
-import java.nio.file.FileAlreadyExistsException;
 
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
+
+import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 /**
  * Swift's implementation of the AbstractBlobContainer
@@ -82,6 +86,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
     private final ExecutorService executor;
     private final WithTimeout.Factory withTimeoutFactory;
+    private final String blobLocalDir;
 
     /**
      * Constructor
@@ -112,6 +117,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         shortOperationTimeout = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_SETTING.get(envSettings);
         longOperationTimeout = SwiftRepository.Swift.LONG_OPERATION_TIMEOUT_SETTING.get(envSettings);
         streamWrite = SwiftRepository.Swift.STREAM_WRITE_SETTING.get(envSettings);
+        blobLocalDir = SwiftRepository.Swift.BLOB_LOCAL_DIR_SETTING.get(envSettings);
     }
 
     private WithTimeout withTimeout() {
@@ -372,14 +378,12 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                           final long blobSize,
                           boolean failIfAlreadyExists) throws IOException {
         if (executor != null && allowConcurrentIO && !streamWrite) {
-            // async execution races against the InputStream closed in the caller. Read all data locally.
-            InputStream capturedStream = streamToReentrantStream(in, blobSize);
+            // async execution races against the InputStream closed in the caller. Read all data from independent storage.
+            final Path path = copyBlob(blobName, in);
 
             Future<Void> task = executor.submit(() -> {
-                try {
-                    internalWriteBlob(blobName, capturedStream, blobSize, failIfAlreadyExists);
-                } finally {
-                    capturedStream.close();
+                try(LocalBlobInputStream lbis = new LocalBlobInputStream(path)) {
+                    internalWriteBlob(blobName, lbis, blobSize, failIfAlreadyExists);
                 }
                 return null;
             });
@@ -389,6 +393,12 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         }
 
         internalWriteBlob(blobName, in, blobSize, failIfAlreadyExists);
+    }
+
+    private Path copyBlob(String blobName, InputStream in) throws IOException {
+        final Path path = PathUtils.getDefaultFileSystem().getPath(blobLocalDir, blobName);
+        Files.copy(in, path, REPLACE_EXISTING);
+        return path;
     }
 
     /**
@@ -437,31 +447,6 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                     "], md5=[" + object.tag + "]");
         }
         return new DataHashInputStream(objectName, new JossInputStream(object.stream), object.tag);
-    }
-
-    /**
-     * Read stream blob entirely into independent storage.
-     *
-     * @param in server input stream
-     * @param sizeHint size hint, do not trust it
-     * @return re-entrant stream holding the blob
-     * @throws IOException on I/O error
-     */
-    private InputStream streamToReentrantStream(InputStream in,
-                                                long sizeHint) throws IOException {
-        final int bufferSize = (int) blobStore.getBufferSize().getBytes();
-        final byte[] buffer = new byte[bufferSize];
-        SegmentedMemoryOutputStream mos = new SegmentedMemoryOutputStream(sizeHint);
-
-        while (true) {
-            int read = in.read(buffer);
-            if (read == -1){
-                break;
-            }
-            mos.write(buffer, 0, read);
-        }
-
-        return new SegmentedMemoryInputStream(mos);
     }
 
     private void internalWriteBlob(String blobName, InputStream fromStream, long blobSize, boolean failIfAlreadyExists) throws IOException {
