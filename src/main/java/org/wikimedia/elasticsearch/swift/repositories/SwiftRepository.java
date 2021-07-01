@@ -16,6 +16,7 @@
 
 package org.wikimedia.elasticsearch.swift.repositories;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.IndexCommit;
@@ -50,6 +51,7 @@ import org.javaswift.joss.model.Account;
 import org.wikimedia.elasticsearch.swift.repositories.account.SwiftAccountFactory;
 import org.wikimedia.elasticsearch.swift.repositories.blobstore.SwiftBlobStore;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -176,6 +178,7 @@ public class SwiftRepository extends BlobStoreRepository {
 
     @Override
     public void initializeSnapshot(SnapshotId snapshotId, List<IndexId> indices, MetaData clusterMetaData) {
+        clearStoredBlobs();
         initializeBlobTasks();
         super.initializeSnapshot(snapshotId, indices, clusterMetaData);
     }
@@ -228,6 +231,16 @@ public class SwiftRepository extends BlobStoreRepository {
         if (failedCount > 0 && listener != null){
             listener.onFailure(new RepositoryException(metadata.name(),
                 "failed to delete snapshot [" + operationId + "]: failed to delete " + failedCount + " blobs"));
+        }
+    }
+
+    private void clearStoredBlobs(){
+        String blobDir = Swift.BLOB_LOCAL_DIR_SETTING.get(envSettings);
+        try {
+            FileUtils.deleteDirectory(FileUtils.getFile(blobDir));
+        }
+        catch (IOException e){
+            logger.warn("Unable to delete directory ["+blobDir+"]", e);
         }
     }
 

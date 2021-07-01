@@ -385,6 +385,9 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                 try(LocalBlobInputStream lbis = new LocalBlobInputStream(path)) {
                     internalWriteBlob(blobName, lbis, blobSize, failIfAlreadyExists);
                 }
+                finally {
+                    cleanupBlob(path);
+                }
                 return null;
             });
 
@@ -397,8 +400,21 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
     private Path copyBlob(String blobName, InputStream in) throws IOException {
         final Path path = PathUtils.getDefaultFileSystem().getPath(blobLocalDir, blobName);
-        Files.copy(in, path, REPLACE_EXISTING);
+        long len = Files.copy(in, path, REPLACE_EXISTING);
+        if (logger.isDebugEnabled()) {
+            logger.debug("Stored [" + len + "] bytes in [" + path + "]");
+        }
         return path;
+    }
+
+    private void cleanupBlob(Path path) {
+        try {
+            Files.delete(path);
+            logger.debug("Deleted file ["+path+"]");
+        }
+        catch (IOException e) {
+            logger.warn("Unable to delete file [" + path + "]", e);
+        }
     }
 
     /**
@@ -470,6 +486,9 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
                         if (fromStream.markSupported()){
                             String dataEtag = DigestUtils.md5Hex(fromStream);
+                            if (logger.isDebugEnabled()) {
+                                logger.debug("Computed MD5 for [" + blobName + "]: [" + dataEtag + "]");
+                            }
                             instructions.setMd5(dataEtag);
                             fromStream.reset();
                         }
