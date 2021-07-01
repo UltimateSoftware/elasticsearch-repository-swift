@@ -83,11 +83,6 @@ dependencies {
 dependencyLicenses.enabled = false
 thirdPartyAudit.enabled = false
 
-// Special memory treatment due to test SegmentedMemoryOutputStreamTests.testWriteCanSave2Gigs
-test {
-    maxHeapSize="5120m"
-}
-
 TestClustersRegistry registry = project.rootProject.extensions.create("testClustersRegistry", TestClustersRegistry)
 TestClustersPlugin.configureClaimClustersHook(project.gradle, registry)
 TestClustersPlugin.configureStartClustersHook(project.gradle, registry)
