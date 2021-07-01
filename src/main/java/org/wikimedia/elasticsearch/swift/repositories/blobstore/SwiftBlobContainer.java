@@ -78,7 +78,6 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     private final TimeValue shortOperationTimeout;
     private final TimeValue longOperationTimeout;
     private final boolean allowConcurrentIO;
-    private final boolean streamRead;
     private final boolean streamWrite;
 
     private final ExecutorService executor;
@@ -112,7 +111,6 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         retryCount = SwiftRepository.Swift.RETRY_COUNT_SETTING.get(envSettings);
         shortOperationTimeout = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_SETTING.get(envSettings);
         longOperationTimeout = SwiftRepository.Swift.LONG_OPERATION_TIMEOUT_SETTING.get(envSettings);
-        streamRead = SwiftRepository.Swift.STREAM_READ_SETTING.get(envSettings);
         streamWrite = SwiftRepository.Swift.STREAM_WRITE_SETTING.get(envSettings);
     }
 
@@ -343,21 +341,11 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         try {
             return withTimeout().retry(retryInterval, longOperationTimeout, retryCount, () -> {
                 try {
-                    ObjectInfo object = getObjectInfo(objectName);
-
-                    if (streamRead) {
-                        return wrapObjectStream(objectName, object);
-                    }
-
-                    // May throw on hash mismatch
-                    try {
-                        return objectToReentrantStream(objectName, object.stream, object.size, object.tag);
-                    } finally {
-                        object.stream.close();
-                    }
+                    final ObjectInfo object = getObjectInfo(objectName);
+                    return wrapObjectStream(objectName, object);
                 }
-                // if object is missing, retry (i.e., rethrow) - Swift's consistency level does not read own writes
                 catch(Exception e){
+                    // if object is missing, retry (i.e., rethrow) - Swift's consistency level does not read own writes
                     logger.warn("failed to read object [" + objectName + "]", e);
                     throw e;
                 }});
@@ -385,7 +373,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                           boolean failIfAlreadyExists) throws IOException {
         if (executor != null && allowConcurrentIO && !streamWrite) {
             // async execution races against the InputStream closed in the caller. Read all data locally.
-            InputStream capturedStream = streamToReentrantStream(in, blobSize, true);
+            InputStream capturedStream = streamToReentrantStream(in, blobSize);
 
             Future<Void> task = executor.submit(() -> {
                 try {
@@ -452,51 +440,15 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     }
 
     /**
-     * Read object entirely into memory and check its etag. Elementary read operations are timed.
-     * @param objectName full path to the object
-     * @param rawInputStream server input stream
-     * @param size size hint, do not trust it
-     * @param objectEtag server etag (MD5 hash as hex)
-     * @return object data as memory stream
-     * @throws IOException on I/O errors or etag mismatch
-     */
-    private InputStream objectToReentrantStream(String objectName,
-                                                InputStream rawInputStream,
-                                                long size,
-                                                String objectEtag) throws IOException {
-        InputStream objectStream = streamToReentrantStream(rawInputStream, size, false);
-        String dataEtag = DigestUtils.md5Hex(objectStream);
-
-        if (dataEtag.equalsIgnoreCase(objectEtag)) {
-            objectStream.reset();
-            if (logger.isDebugEnabled()) {
-                logger.debug("read object into memory [" + objectName + "], size=[" + size + "]");
-            }
-            return objectStream;
-        }
-
-        String message = "cannot read object [" + objectName + "]: server etag [" + objectEtag +
-                "] does not match calculated etag [" + dataEtag + "]";
-        logger.warn(message);
-        throw new BlobStoreException(message);
-    }
-
-    /**
-     * If the original stream was re-entrant, do nothing; otherwise, read blob entirely into memory.
+     * Read stream blob entirely into independent storage.
      *
      * @param in server input stream
      * @param sizeHint size hint, do not trust it
-     * @param forceRead force reading into memory
      * @return re-entrant stream holding the blob
      * @throws IOException on I/O error
      */
     private InputStream streamToReentrantStream(InputStream in,
-                                                long sizeHint,
-                                                boolean forceRead) throws IOException {
-        if (!forceRead && in.markSupported()) {
-            return in;
-        }
-
+                                                long sizeHint) throws IOException {
         final int bufferSize = (int) blobStore.getBufferSize().getBytes();
         final byte[] buffer = new byte[bufferSize];
         SegmentedMemoryOutputStream mos = new SegmentedMemoryOutputStream(sizeHint);

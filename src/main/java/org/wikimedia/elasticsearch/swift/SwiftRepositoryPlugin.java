@@ -83,7 +83,6 @@ public class SwiftRepositoryPlugin extends Plugin implements RepositoryPlugin {
                              SwiftRepository.Swift.RETRY_INTERVAL_SETTING,
                              SwiftRepository.Swift.RETRY_COUNT_SETTING,
                              SwiftRepository.Swift.ALLOW_CONCURRENT_IO_SETTING,
-                             SwiftRepository.Swift.STREAM_READ_SETTING,
                              SwiftRepository.Swift.STREAM_WRITE_SETTING);
     }
 

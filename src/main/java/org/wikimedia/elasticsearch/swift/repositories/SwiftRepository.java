@@ -120,10 +120,6 @@ public class SwiftRepository extends BlobStoreRepository {
             true,
             Setting.Property.NodeScope);
 
-        Setting<Boolean> STREAM_READ_SETTING = Setting.boolSetting(PREFIX+".stream_read",
-            true,
-            Setting.Property.NodeScope);
-
         Setting<Boolean> STREAM_WRITE_SETTING = Setting.boolSetting(PREFIX+".stream_write",
             false,
             Setting.Property.NodeScope);
