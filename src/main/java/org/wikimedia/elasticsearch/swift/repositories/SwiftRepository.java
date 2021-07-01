@@ -31,6 +31,7 @@ import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
+import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.common.util.concurrent.FutureUtils;
 import org.elasticsearch.common.xcontent.NamedXContentRegistry;
 import org.elasticsearch.index.mapper.MapperService;
@@ -91,24 +92,24 @@ public class SwiftRepository extends BlobStoreRepository {
             10,
             Setting.Property.NodeScope);
 
-        Setting<Integer> DELETE_TIMEOUT_MIN_SETTING = Setting.intSetting(PREFIX+".delete_timeout_min",
-            60,
+        Setting<TimeValue> DELETE_TIMEOUT_SETTING = Setting.timeSetting(PREFIX+".delete_timeout",
+            new TimeValue(60, TimeUnit.MINUTES),
             Setting.Property.NodeScope);
 
-        Setting<Integer> SNAPSHOT_TIMEOUT_MIN_SETTING = Setting.intSetting(PREFIX+".snapshot_timeout_min",
-            360,
+        Setting<TimeValue> SNAPSHOT_TIMEOUT_SETTING = Setting.timeSetting(PREFIX+".snapshot_timeout",
+            new TimeValue(360, TimeUnit.MINUTES),
             Setting.Property.NodeScope);
 
-        Setting<Integer> SHORT_OPERATION_TIMEOUT_S_SETTING = Setting.intSetting(PREFIX+".short_operation_timeout_s",
-            30,
+        Setting<TimeValue> SHORT_OPERATION_TIMEOUT_SETTING = Setting.timeSetting(PREFIX+".short_operation_timeout",
+            new TimeValue(30, TimeUnit.SECONDS),
             Setting.Property.NodeScope);
 
-        Setting<Integer> LONG_OPERATION_TIMEOUT_S_SETTING = Setting.intSetting(PREFIX+".long_operation_timeout_s",
-            600,
+        Setting<TimeValue> LONG_OPERATION_TIMEOUT_SETTING = Setting.timeSetting(PREFIX+".long_operation_timeout",
+            new TimeValue(600, TimeUnit.SECONDS),
             Setting.Property.NodeScope);
 
-        Setting<Integer> RETRY_INTERVAL_S_SETTING = Setting.intSetting(PREFIX+".retry_interval_s",
-            10,
+        Setting<TimeValue> RETRY_INTERVAL_SETTING = Setting.timeSetting(PREFIX+".retry_interval",
+            new TimeValue(10, TimeUnit.SECONDS),
             Setting.Property.NodeScope);
 
         Setting<Integer> RETRY_COUNT_SETTING = Setting.intSetting(PREFIX+".retry_count",
@@ -204,9 +205,9 @@ public class SwiftRepository extends BlobStoreRepository {
     // Intent of this method is to provide a wait that delays completion of potentially mutually exclusive operations
     // in Elasticsearch
     //
-    private void finalizeBlobDeletion(String operationId, ActionListener<?> listener, final long timeout, TimeUnit timeUnit) {
+    private void finalizeBlobDeletion(String operationId, ActionListener<?> listener, final TimeValue timeout) {
         long failedCount = 0;
-        final long nanoTimeLimit = System.nanoTime() + TimeUnit.NANOSECONDS.convert(timeout, timeUnit);
+        final long nanoTimeLimit = System.nanoTime() + timeout.nanos();
 
         for (Map.Entry<String, Future<DeleteResult>> entry: blobDeletionTasks.entrySet()) {
             String blobName = entry.getKey();
@@ -232,8 +233,8 @@ public class SwiftRepository extends BlobStoreRepository {
     }
 
     private void finalizeBlobTasks(String operationId, ActionListener<?> listener) {
-        finalizeBlobWrite(operationId, listener, Swift.SNAPSHOT_TIMEOUT_MIN_SETTING.get(envSettings), TimeUnit.MINUTES);
-        finalizeBlobDeletion(operationId, listener, Swift.DELETE_TIMEOUT_MIN_SETTING.get(envSettings), TimeUnit.MINUTES);
+        finalizeBlobWrite(operationId, listener, Swift.SNAPSHOT_TIMEOUT_SETTING.get(envSettings));
+        finalizeBlobDeletion(operationId, listener, Swift.DELETE_TIMEOUT_SETTING.get(envSettings));
     }
 
     public void addWrite(String blobName, Future<Void> task) {
@@ -244,9 +245,9 @@ public class SwiftRepository extends BlobStoreRepository {
     // Intent of this method is to provide a wait that delays completion of potentially mutually exclusive operations
     // in Elasticsearch
     //
-    private void finalizeBlobWrite(String operationId, ActionListener<?> listener, final long timeout, TimeUnit timeUnit) {
+    private void finalizeBlobWrite(String operationId, ActionListener<?> listener, final TimeValue timeout) {
         long failedCount = 0;
-        final long nanoTimeLimit = System.nanoTime() + TimeUnit.NANOSECONDS.convert(timeout, timeUnit);
+        final long nanoTimeLimit = System.nanoTime() + timeout.nanos();
 
         for (Map.Entry<String, Future<Void>> entry: blobWriteTasks.entrySet()) {
             String blobName = entry.getKey();

@@ -17,6 +17,7 @@
 package org.wikimedia.elasticsearch.swift.util.retry;
 
 import org.apache.logging.log4j.Logger;
+import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.common.util.concurrent.FutureUtils;
 
 import java.util.concurrent.Callable;
@@ -36,10 +37,10 @@ class WithTimeoutExecutorImpl implements WithTimeout {
     }
 
     @Override
-    public <T> T retry(long interval, long timeout, TimeUnit timeUnit, Callable<T> callable) {
-        Future<T> task = executorService.submit(() -> internalRetry(interval, timeout, timeUnit, Integer.MAX_VALUE, callable));
+    public <T> T retry(TimeValue interval, TimeValue timeout, Callable<T> callable) {
+        Future<T> task = executorService.submit(() -> internalRetry(interval, timeout, Integer.MAX_VALUE, callable));
         try{
-            return FutureUtils.get(task, timeout, timeUnit);
+            return FutureUtils.get(task, timeout.seconds(), TimeUnit.SECONDS);
         }
         catch (Exception e){
             FutureUtils.cancel(task);
@@ -48,10 +49,10 @@ class WithTimeoutExecutorImpl implements WithTimeout {
     }
 
     @Override
-    public <T> T retry(long interval, long timeout, TimeUnit timeUnit, int attempts, Callable<T> callable) {
-        Future<T> task = executorService.submit(() -> internalRetry(interval, timeout, timeUnit, attempts, callable));
+    public <T> T retry(TimeValue interval, TimeValue timeout, int attempts, Callable<T> callable) {
+        Future<T> task = executorService.submit(() -> internalRetry(interval, timeout, attempts, callable));
         try{
-            return FutureUtils.get(task, timeout, timeUnit);
+            return FutureUtils.get(task, timeout.seconds(), TimeUnit.SECONDS);
         }
         catch (Exception e){
             FutureUtils.cancel(task);
@@ -60,10 +61,10 @@ class WithTimeoutExecutorImpl implements WithTimeout {
     }
 
     @Override
-    public <T> T timeout(long timeout, TimeUnit timeUnit, Callable<T> callable) {
+    public <T> T timeout(TimeValue timeout, Callable<T> callable) {
         Future<T> task = executorService.submit(callable);
         try{
-            return FutureUtils.get(task, timeout, timeUnit);
+            return FutureUtils.get(task, timeout.seconds(), TimeUnit.SECONDS);
         }
         catch (Exception e){
             FutureUtils.cancel(task);
@@ -71,11 +72,11 @@ class WithTimeoutExecutorImpl implements WithTimeout {
         }
     }
 
-    private <T> T internalRetry(long interval, long timeout, TimeUnit timeUnit, final int attempts, Callable<T> callable)
+    private <T> T internalRetry(TimeValue interval, TimeValue timeout, final int attempts, Callable<T> callable)
             throws TimeoutException, InterruptedException {
-        final long sleepMillis = TimeUnit.MILLISECONDS.convert(interval, timeUnit);
-        final int sleepNanos = (int)(TimeUnit.NANOSECONDS.convert(interval, timeUnit) - sleepMillis * 1_000_000);
-        final long nanoTimeLimit = System.nanoTime() + TimeUnit.NANOSECONDS.convert(timeout, timeUnit);
+        final long sleepMillis = interval.millis();
+        final int sleepNanos = (int)(interval.nanos() - sleepMillis * 1_000_000);
+        final long nanoTimeLimit = System.nanoTime() + timeout.nanos();
 
         int count = 0;
         while (count++ < attempts && System.nanoTime() < nanoTimeLimit) {

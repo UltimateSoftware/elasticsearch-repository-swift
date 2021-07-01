@@ -28,6 +28,7 @@ import org.elasticsearch.common.blobstore.DeleteResult;
 import org.elasticsearch.common.blobstore.support.AbstractBlobContainer;
 import org.elasticsearch.common.blobstore.support.PlainBlobMetaData;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.javaswift.joss.client.core.ContainerPaginationMap;
 import org.javaswift.joss.exception.NotFoundException;
@@ -57,7 +58,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Swift's implementation of the AbstractBlobContainer
@@ -73,10 +73,10 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     private final String keyPath;
 
     private final boolean blobExistsCheckAllowed;
-    private final int retryIntervalS;
+    private final TimeValue retryInterval;
     private final int retryCount;
-    private final int shortOperationTimeoutS;
-    private final int longOperationTimeoutS;
+    private final TimeValue shortOperationTimeout;
+    private final TimeValue longOperationTimeout;
     private final boolean allowConcurrentIO;
     private final boolean streamRead;
     private final boolean streamWrite;
@@ -108,10 +108,10 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
         boolean minimizeBlobExistsChecks = SwiftRepository.Swift.MINIMIZE_BLOB_EXISTS_CHECKS_SETTING.get(envSettings);
         blobExistsCheckAllowed = pathString.isEmpty() || !minimizeBlobExistsChecks;
-        retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
+        retryInterval = SwiftRepository.Swift.RETRY_INTERVAL_SETTING.get(envSettings);
         retryCount = SwiftRepository.Swift.RETRY_COUNT_SETTING.get(envSettings);
-        shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
-        longOperationTimeoutS = SwiftRepository.Swift.LONG_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
+        shortOperationTimeout = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_SETTING.get(envSettings);
+        longOperationTimeout = SwiftRepository.Swift.LONG_OPERATION_TIMEOUT_SETTING.get(envSettings);
         streamRead = SwiftRepository.Swift.STREAM_READ_SETTING.get(envSettings);
         streamWrite = SwiftRepository.Swift.STREAM_WRITE_SETTING.get(envSettings);
     }
@@ -151,7 +151,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     private DeleteResult internalDeleteBlob(String blobName) throws Exception {
         final String objectName = buildKey(blobName);
 
-        Object result = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount,
+        Object result = withTimeout().retry(retryInterval, shortOperationTimeout, retryCount,
             () -> SwiftPerms.execThrows(() -> {
                 try {
                     StoredObject object = blobStore.getContainer().getObject(objectName);
@@ -186,7 +186,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             Container container = blobStore.getContainer();
             ContainerPaginationMap containerPaginationMap = new ContainerPaginationMap(container, keyPath, container.getMaxPageSize());
             Collection<StoredObject> containerObjects = withTimeout().retry(
-                retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount, () ->
+                    retryInterval, shortOperationTimeout, retryCount, () ->
                     SwiftPerms.exec( () -> {
                         try {
                             return containerPaginationMap.listAllItems();
@@ -231,7 +231,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         String directoryKey = blobNamePrefix == null ? keyPath : buildKey(blobNamePrefix);
         try {
             Collection<DirectoryOrObject> directoryList = withTimeout().retry(
-                retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount, () ->
+                    retryInterval, shortOperationTimeout, retryCount, () ->
                     SwiftPerms.execThrows(() -> {
                         try {
                             return blobStore.getContainer().listDirectory(new Directory(directoryKey, '/'));
@@ -248,7 +248,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                 if (obj.isObject()) {
                     String name = obj.getName().substring(keyPath.length());
                     Long length = withTimeout().retry(
-                        retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount, () ->
+                            retryInterval, shortOperationTimeout, retryCount, () ->
                             SwiftPerms.exec(() -> {
                                 try {
                                     return obj.getAsObject().getContentLength();
@@ -285,7 +285,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     public Map<String, BlobContainer> children() throws IOException{
         Collection<DirectoryOrObject> objects;
         try {
-            objects = withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount, () ->
+            objects = withTimeout().retry(retryInterval, shortOperationTimeout, retryCount, () ->
                 SwiftPerms.execThrows(() -> {
                     try {
                         return blobStore.getContainer().listDirectory(new Directory(keyPath, '/'));
@@ -341,7 +341,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         String objectName = buildKey(blobName);
 
         try {
-            return withTimeout().retry(retryIntervalS, longOperationTimeoutS, TimeUnit.SECONDS, retryCount, () -> {
+            return withTimeout().retry(retryInterval, longOperationTimeout, retryCount, () -> {
                 try {
                     ObjectInfo object = getObjectInfo(objectName);
 
@@ -497,7 +497,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             return in;
         }
 
-        final int bufferSize = (int) blobStore.getBufferSizeInBytes();
+        final int bufferSize = (int) blobStore.getBufferSize().getBytes();
         final byte[] buffer = new byte[bufferSize];
         SegmentedMemoryOutputStream mos = new SegmentedMemoryOutputStream(sizeHint);
 
@@ -520,7 +520,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         }
 
         try {
-            IOException exception = withTimeout().retry(retryIntervalS, longOperationTimeoutS, TimeUnit.SECONDS, retryCount, () ->
+            IOException exception = withTimeout().retry(retryInterval, longOperationTimeout, retryCount, () ->
                 SwiftPerms.execThrows(() -> {
                     try {
                         StoredObject object = blobStore.getContainer().getObject(objectName);

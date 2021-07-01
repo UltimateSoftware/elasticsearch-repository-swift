@@ -16,8 +16,6 @@
 
 package org.wikimedia.elasticsearch.swift.repositories.blobstore;
 
-import java.util.concurrent.TimeUnit;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.blobstore.BlobContainer;
@@ -26,6 +24,7 @@ import org.elasticsearch.common.blobstore.BlobStore;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
+import org.elasticsearch.common.unit.TimeValue;
 import org.javaswift.joss.model.Account;
 import org.javaswift.joss.model.Container;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
@@ -39,7 +38,7 @@ public class SwiftBlobStore implements BlobStore {
     private static final Logger logger = LogManager.getLogger(SwiftBlobStore.class);
 
     // How much to buffer our blobs by
-    private final long bufferSizeInBytes;
+    private final ByteSizeValue bufferSize;
 
     // Our Swift container. This is important.
     private final String containerName;
@@ -56,8 +55,8 @@ public class SwiftBlobStore implements BlobStore {
     private final SwiftRepository repository;
     private final WithTimeout.Factory withTimeoutFactory;
 
-    private final int retryIntervalS;
-    private final int shortOperationTimeoutS;
+    private final TimeValue retryInterval;
+    private final TimeValue shortOperationTimeout;
     private final int retryCount;
 
     /**
@@ -77,11 +76,11 @@ public class SwiftBlobStore implements BlobStore {
         this.envSettings = envSettings;
         this.auth = auth;
         this.containerName = containerName;
-        bufferSizeInBytes = repoSettings.getAsBytesSize("buffer_size", new ByteSizeValue(100, ByteSizeUnit.KB)).getBytes();
+        bufferSize = repoSettings.getAsBytesSize("buffer_size", new ByteSizeValue(1024, ByteSizeUnit.KB));
         withTimeoutFactory = new WithTimeout.Factory(envSettings, logger);
-        retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
+        retryInterval = SwiftRepository.Swift.RETRY_INTERVAL_SETTING.get(envSettings);
         retryCount = SwiftRepository.Swift.RETRY_COUNT_SETTING.get(envSettings);
-        shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
+        shortOperationTimeout = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_SETTING.get(envSettings);
     }
 
     private WithTimeout withTimeout(){
@@ -109,7 +108,7 @@ public class SwiftBlobStore implements BlobStore {
     }
 
     private Container internalGetContainer() throws Exception {
-        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount, () -> {
+        return withTimeout().retry(retryInterval, shortOperationTimeout, retryCount, () -> {
             try {
                 return SwiftPerms.exec(() -> {
                     Container container = auth.getContainer(containerName);
@@ -130,8 +129,8 @@ public class SwiftBlobStore implements BlobStore {
     /**
      * @return buffer size
      */
-    public long getBufferSizeInBytes() {
-        return bufferSizeInBytes;
+    public ByteSizeValue getBufferSize() {
+        return bufferSize;
     }
 
     /**
