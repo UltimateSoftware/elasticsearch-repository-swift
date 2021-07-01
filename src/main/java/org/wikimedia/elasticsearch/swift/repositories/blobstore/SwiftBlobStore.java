@@ -22,8 +22,6 @@ import org.elasticsearch.common.blobstore.BlobContainer;
 import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.blobstore.BlobStore;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.common.unit.ByteSizeUnit;
-import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.unit.TimeValue;
 import org.javaswift.joss.model.Account;
 import org.javaswift.joss.model.Container;
@@ -36,9 +34,6 @@ import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
  */
 public class SwiftBlobStore implements BlobStore {
     private static final Logger logger = LogManager.getLogger(SwiftBlobStore.class);
-
-    // How much to buffer our blobs by
-    private final ByteSizeValue bufferSize;
 
     // Our Swift container. This is important.
     private final String containerName;
@@ -76,7 +71,6 @@ public class SwiftBlobStore implements BlobStore {
         this.envSettings = envSettings;
         this.auth = auth;
         this.containerName = containerName;
-        bufferSize = repoSettings.getAsBytesSize("buffer_size", new ByteSizeValue(1024, ByteSizeUnit.KB));
         withTimeoutFactory = new WithTimeout.Factory(envSettings, logger);
         retryInterval = SwiftRepository.Swift.RETRY_INTERVAL_SETTING.get(envSettings);
         retryCount = SwiftRepository.Swift.RETRY_COUNT_SETTING.get(envSettings);
@@ -124,13 +118,6 @@ public class SwiftBlobStore implements BlobStore {
                 throw e;
             }
         });
-    }
-
-    /**
-     * @return buffer size
-     */
-    public ByteSizeValue getBufferSize() {
-        return bufferSize;
     }
 
     /**
