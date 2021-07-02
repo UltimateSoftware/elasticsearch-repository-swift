@@ -1,3 +1,4 @@
+
 Swift repository plugin for Elasticsearch
 =========================================
 
@@ -53,8 +54,8 @@ Plugin settings to be placed in elasticsearch YAML configuration. Keep defaults,
 | repository_swift.delete_timeout              | timeout of snapshot deletion (default 60m), must include unit suffix, like ms, s, m.
 | repository_swift.retry_interval              | interval for retry-until-success-or-timeout pattern (default 10s), must include unit suffix, like ms, s, m.
 | repository_swift.retry_count                 | number of attempts for retries where timing is impractical (default 3 times)
-| repository_swift.short_operation_timeout     | timeout for short operations (like writing a small blob, deleting, or listing) (default 30s), must include unit suffix, like ms, s, m.
-| repository_swift.long_operation_timeout      | timeout for long operations (like writing of multi-Gig data stream) (default 600 s), must include unit suffix, like ms, s, m.
+| repository_swift.short_operation_timeout     | timeout for short operations (like writing a small blob, deleting, or listing) (default 2m), must include unit suffix, like ms, s, m.
+| repository_swift.long_operation_timeout      | timeout for long operations (like writing of multi-Gig data stream) (default 20m), must include unit suffix, like ms, s, m.
 | repository_swift.snapshot_timeout            | timeout of taking a snapshot in minutes (default 360m), must include unit suffix, like ms, s, m.
 | repository_swift.stream_write                | true or false (default). Reduce memory footprint on snapshot, at the expense of not writing concurrently
 
