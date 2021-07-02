@@ -45,6 +45,7 @@ import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 import org.wikimedia.elasticsearch.swift.util.stream.DataHashInputStream;
 import org.wikimedia.elasticsearch.swift.util.stream.JossInputStream;
 import org.wikimedia.elasticsearch.swift.util.stream.LocalBlobInputStream;
+import org.wikimedia.elasticsearch.swift.util.stream.StreamClosedException;
 
 import java.io.InputStream;
 import java.io.IOException;
@@ -475,7 +476,10 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         return new DataHashInputStream(objectName, new JossInputStream(object.stream), object.tag);
     }
 
-    private void internalWriteBlob(String blobName, InputStream fromStream, long blobSize, boolean failIfAlreadyExists) throws IOException {
+    private void internalWriteBlob(final String blobName,
+                                   final InputStream fromStream,
+                                   final long blobSize,
+                                   final boolean failIfAlreadyExists) throws IOException {
         final String objectName = buildKey(blobName);
         String md5 = null;
 
@@ -514,6 +518,10 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                                          instructions.getMd5() + "]");
                         }
                         return null;
+                    }
+                    catch (StreamClosedException e) {
+                        // no retries, stream closed in another thread
+                        return e;
                     }
                     catch (Exception e) {
                         logger.warn("cannot write object [" + objectName + "]", e);
