@@ -26,11 +26,13 @@ import java.nio.file.StandardOpenOption;
 
 /**
  * Class implements seekable stream over random access file.
- * Note that plugin build forbids use of java.io.FileInputStream
+ * Note that plugin build forbids use of java.io.FileInputStream.
+ * This class is not re-entrant
  */
 public class LocalBlobInputStream extends InputStream {
     private final FileChannel channel;
     private long markedPos;
+    private boolean closed;
 
     public LocalBlobInputStream(Path path) throws IOException {
         channel = FileChannel.open(path, StandardOpenOption.READ);
@@ -38,11 +40,19 @@ public class LocalBlobInputStream extends InputStream {
 
     @Override
     public void close() throws IOException {
+        closed = true;
         channel.close();
+    }
+
+    private void checkClosed() throws IOException {
+        if (closed){
+            throw new IOException("stream is closed");
+        }
     }
 
     @Override
     public int read(byte[] b, int off, int len) throws IOException {
+        checkClosed();
         return Channels.readFromFileChannel(channel, channel.position(), b, off, len);
     }
 
@@ -53,6 +63,7 @@ public class LocalBlobInputStream extends InputStream {
 
     @Override
     public int read() throws IOException {
+        checkClosed();
         ByteBuffer buf = ByteBuffer.allocate(1);
         int result = Channels.readFromFileChannel(channel, channel.position(), buf);
         return result == -1 ? -1 : buf.get();
@@ -60,6 +71,7 @@ public class LocalBlobInputStream extends InputStream {
 
     @Override
     public long skip(long n) throws IOException {
+        checkClosed();
         channel.position(channel.position() + n);
         return n;
     }
@@ -72,6 +84,7 @@ public class LocalBlobInputStream extends InputStream {
     @Override
     public synchronized void mark(int readlimit) {
         try {
+            checkClosed();
             markedPos = channel.position();
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -80,6 +93,7 @@ public class LocalBlobInputStream extends InputStream {
 
     @Override
     public synchronized void reset() throws IOException {
+        checkClosed();
         channel.position(markedPos);
     }
 }
