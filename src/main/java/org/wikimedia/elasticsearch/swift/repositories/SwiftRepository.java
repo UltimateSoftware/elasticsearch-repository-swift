@@ -28,6 +28,7 @@ import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.blobstore.BlobStore;
 import org.elasticsearch.common.blobstore.DeleteResult;
 import org.elasticsearch.common.inject.Inject;
+import org.elasticsearch.common.io.PathUtils;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeUnit;
@@ -48,10 +49,12 @@ import org.elasticsearch.snapshots.SnapshotInfo;
 import org.elasticsearch.snapshots.SnapshotShardFailure;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.javaswift.joss.model.Account;
+import org.wikimedia.elasticsearch.swift.SwiftPerms;
 import org.wikimedia.elasticsearch.swift.repositories.account.SwiftAccountFactory;
 import org.wikimedia.elasticsearch.swift.repositories.blobstore.SwiftBlobStore;
 
-import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -177,8 +180,13 @@ public class SwiftRepository extends BlobStoreRepository {
     }
 
     @Override
-    public void initializeSnapshot(SnapshotId snapshotId, List<IndexId> indices, MetaData clusterMetaData) {
+    protected void doStart() {
+        super.doStart();
         clearStoredBlobs();
+    }
+
+    @Override
+    public void initializeSnapshot(SnapshotId snapshotId, List<IndexId> indices, MetaData clusterMetaData) {
         initializeBlobTasks();
         super.initializeSnapshot(snapshotId, indices, clusterMetaData);
     }
@@ -237,9 +245,22 @@ public class SwiftRepository extends BlobStoreRepository {
     private void clearStoredBlobs(){
         String blobDir = Swift.BLOB_LOCAL_DIR_SETTING.get(envSettings);
         try {
-            FileUtils.deleteDirectory(FileUtils.getFile(blobDir));
+            SwiftPerms.execThrows(() -> {
+                try {
+                    Files.createDirectory(PathUtils.getDefaultFileSystem().getPath(blobDir));
+                    if (logger.isDebugEnabled()){
+                        logger.debug("Created directory [" + blobDir + "]");
+                    }
+                }
+                catch (FileAlreadyExistsException e){
+                    if (logger.isDebugEnabled()) {
+                        logger.debug("Directory [" + blobDir + "] already exists");
+                    }
+                }
+                FileUtils.cleanDirectory(FileUtils.getFile(blobDir));
+            });
         }
-        catch (IOException e){
+        catch (Exception e){
             logger.warn("Unable to delete directory ["+blobDir+"]", e);
         }
     }

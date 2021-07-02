@@ -17,6 +17,7 @@
 package org.wikimedia.elasticsearch.swift.repositories.blobstore;
 
 import org.apache.commons.codec.digest.DigestUtils;
+import org.apache.commons.io.input.CloseShieldInputStream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.Nullable;
@@ -381,15 +382,16 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             // async execution races against the InputStream closed in the caller. Read all data from independent storage.
             final Path path = copyBlob(blobName, in);
 
-            Future<Void> task = executor.submit(() -> {
-                try(LocalBlobInputStream lbis = new LocalBlobInputStream(path)) {
-                    internalWriteBlob(blobName, lbis, blobSize, failIfAlreadyExists);
-                }
-                finally {
-                    cleanupBlob(path);
-                }
-                return null;
-            });
+            Future<Void> task = executor.submit(() ->
+                SwiftPerms.execThrows(() -> {
+                    try(LocalBlobInputStream lbis = new LocalBlobInputStream(path)) {
+                        internalWriteBlob(blobName, lbis, blobSize, failIfAlreadyExists);
+                        }
+                    finally {
+                        cleanupBlob(path);
+                    }
+                    return null;
+                }));
 
             repository.addWrite(blobName, task);
             return;
@@ -399,12 +401,20 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
     }
 
     private Path copyBlob(String blobName, InputStream in) throws IOException {
-        final Path path = PathUtils.getDefaultFileSystem().getPath(blobLocalDir, blobName);
-        long len = Files.copy(in, path, REPLACE_EXISTING);
-        if (logger.isDebugEnabled()) {
-            logger.debug("Stored [" + len + "] bytes in [" + path + "]");
+        try {
+            final Path path = PathUtils.getDefaultFileSystem().getPath(blobLocalDir, blobName);
+            long len = SwiftPerms.execThrows(() -> Files.copy(in, path, REPLACE_EXISTING));
+            if (logger.isDebugEnabled()) {
+                logger.debug("Stored [" + len + "] bytes in [" + path + "]");
+            }
+            return path;
         }
-        return path;
+        catch (IOException | RuntimeException e){
+            throw e;
+        }
+        catch(Exception e){
+            throw new BlobStoreException("Unable to copy blob ["+blobName+"]", e);
+        }
     }
 
     private void cleanupBlob(Path path) {
@@ -412,7 +422,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
             Files.delete(path);
             logger.debug("Deleted file ["+path+"]");
         }
-        catch (IOException e) {
+        catch (Exception e) {
             logger.warn("Unable to delete file [" + path + "]", e);
         }
     }
@@ -482,7 +492,9 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                             return new FileAlreadyExistsException("object [" + objectName + "] already exists, cannot overwrite");
                         }
 
-                        UploadInstructions instructions = new UploadInstructions(fromStream);
+                        // uploadObject() tries to close stream on failure. Don't allow this, we may retry.
+                        final CloseShieldInputStream unclosableStream = new CloseShieldInputStream(fromStream);
+                        UploadInstructions instructions = new UploadInstructions(unclosableStream);
 
                         if (fromStream.markSupported()){
                             String dataEtag = DigestUtils.md5Hex(fromStream);

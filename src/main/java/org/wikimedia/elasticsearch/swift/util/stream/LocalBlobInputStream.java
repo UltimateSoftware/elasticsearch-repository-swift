@@ -24,6 +24,10 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
+/**
+ * Class implements seekable stream over random access file.
+ * Note that plugin build forbids use of java.io.FileInputStream
+ */
 public class LocalBlobInputStream extends InputStream {
     private final FileChannel channel;
     private long markedPos;
