@@ -386,7 +386,7 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                 SwiftPerms.execThrows(() -> {
                     try(LocalBlobInputStream lbis = new LocalBlobInputStream(path)) {
                         internalWriteBlob(blobName, lbis, blobSize, failIfAlreadyExists);
-                        }
+                    }
                     finally {
                         cleanupBlob(path);
                     }
@@ -477,10 +477,18 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
     private void internalWriteBlob(String blobName, InputStream fromStream, long blobSize, boolean failIfAlreadyExists) throws IOException {
         final String objectName = buildKey(blobName);
+        String md5 = null;
 
         if (fromStream.markSupported()){
-            fromStream.mark((int)blobSize);
+            fromStream.mark((int)Math.min(blobSize, Integer.MAX_VALUE));
+            md5 = DigestUtils.md5Hex(fromStream);
+            if (logger.isDebugEnabled()) {
+                logger.debug("Computed MD5 for [" + blobName + "]: [" + md5 + "]");
+            }
+            fromStream.reset();
         }
+
+        final String dataEtag = md5;
 
         try {
             IOException exception = withTimeout().retry(retryInterval, longOperationTimeout, retryCount, () ->
@@ -496,13 +504,8 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                         final CloseShieldInputStream unclosableStream = new CloseShieldInputStream(fromStream);
                         UploadInstructions instructions = new UploadInstructions(unclosableStream);
 
-                        if (fromStream.markSupported()){
-                            String dataEtag = DigestUtils.md5Hex(fromStream);
-                            if (logger.isDebugEnabled()) {
-                                logger.debug("Computed MD5 for [" + blobName + "]: [" + dataEtag + "]");
-                            }
+                        if (dataEtag != null) {
                             instructions.setMd5(dataEtag);
-                            fromStream.reset();
                         }
 
                         object.uploadObject(instructions);
