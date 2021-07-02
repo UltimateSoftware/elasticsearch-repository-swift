@@ -17,43 +17,65 @@ package org.wikimedia.elasticsearch.swift.util.stream;
 
 import org.elasticsearch.common.io.Channels;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
 /**
  * Class implements seekable stream over random access file.
- * Note that plugin build forbids use of java.io.FileInputStream.
+ * Note that plugin build forbids use of java.io.FileInputStream, java.io.File, etc., instead,
+ * encouraging use of java.nio.file.* classes and internal ES utilities.
  * This class is not re-entrant
  */
 public class LocalBlobInputStream extends InputStream {
     private final FileChannel channel;
     private long markedPos;
-    private boolean closed;
+    private volatile boolean closed;
 
     public LocalBlobInputStream(Path path) throws IOException {
         channel = FileChannel.open(path, StandardOpenOption.READ);
     }
 
+    /**
+     * Close may be called from a thread that times execution, while reads are being retried in another thread,
+     * causing ClosedChannelException
+     *
+     * @throws IOException @see java.nio.channels.FileChannel.close()
+     */
     @Override
     public void close() throws IOException {
         closed = true;
         channel.close();
     }
 
-    private void checkClosed() throws IOException {
+    private void checkClosed() throws StreamClosedException {
         if (closed){
-            throw new IOException("stream is closed");
+            throw new StreamClosedException();
         }
     }
 
     @Override
     public int read(byte[] b, int off, int len) throws IOException {
+        if (off >= b.length){
+            throw new IllegalArgumentException("offset outside array");
+        }
         checkClosed();
-        return Channels.readFromFileChannel(channel, channel.position(), b, off, len);
+        long position = channel.position();
+
+        // dont read past EOF or buffer boundary - there is a bug in ES Channels implementation
+        int adjustedLen = (int) Math.min(b.length - off, Math.min(len, channel.size() - position));
+        if (adjustedLen <= 0){
+            return -1;
+        }
+
+        int read = Channels.readFromFileChannel(channel, position, b, off, adjustedLen);
+        if (read > 0) {
+            channel.position(position + read);
+        }
+        return read;
     }
 
     @Override
@@ -64,9 +86,16 @@ public class LocalBlobInputStream extends InputStream {
     @Override
     public int read() throws IOException {
         checkClosed();
-        ByteBuffer buf = ByteBuffer.allocate(1);
-        int result = Channels.readFromFileChannel(channel, channel.position(), buf);
-        return result == -1 ? -1 : buf.get();
+        long position = channel.position();
+
+        try {
+            byte[] b = Channels.readFromFileChannel(channel, position, 1);
+            channel.position(position+1);
+            return b[0];
+        }
+        catch (EOFException e){
+            return -1;
+        }
     }
 
     @Override
