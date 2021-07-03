@@ -28,7 +28,6 @@ import org.elasticsearch.common.blobstore.BlobPath;
 import org.elasticsearch.common.blobstore.BlobStore;
 import org.elasticsearch.common.blobstore.DeleteResult;
 import org.elasticsearch.common.inject.Inject;
-import org.elasticsearch.common.io.PathUtils;
 import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.ByteSizeUnit;
@@ -53,8 +52,6 @@ import org.wikimedia.elasticsearch.swift.SwiftPerms;
 import org.wikimedia.elasticsearch.swift.repositories.account.SwiftAccountFactory;
 import org.wikimedia.elasticsearch.swift.repositories.blobstore.SwiftBlobStore;
 
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -245,23 +242,11 @@ public class SwiftRepository extends BlobStoreRepository {
     private void clearStoredBlobs(){
         String blobDir = Swift.BLOB_LOCAL_DIR_SETTING.get(envSettings);
         try {
-            SwiftPerms.execThrows(() -> {
-                try {
-                    Files.createDirectory(PathUtils.getDefaultFileSystem().getPath(blobDir));
-                    if (logger.isDebugEnabled()){
-                        logger.debug("Created directory [" + blobDir + "]");
-                    }
-                }
-                catch (FileAlreadyExistsException e){
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("Directory [" + blobDir + "] already exists");
-                    }
-                }
-                FileUtils.cleanDirectory(FileUtils.getFile(blobDir));
-            });
+            SwiftPerms.execThrows(() ->
+                FileUtils.cleanDirectory(FileUtils.getFile(blobDir)));
         }
         catch (Exception e){
-            logger.warn("Unable to delete directory ["+blobDir+"]", e);
+            logger.warn("Unable to clean directory ["+blobDir+"]", e);
         }
     }
 

@@ -401,8 +401,11 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
     private Path copyBlob(String blobName, InputStream in) throws IOException {
         try {
-            final Path path = PathUtils.getDefaultFileSystem().getPath(blobLocalDir, blobName);
-            long len = SwiftPerms.execThrows(() -> Files.copy(in, path, REPLACE_EXISTING));
+            final Path path = PathUtils.getDefaultFileSystem().getPath(blobLocalDir, keyPath, blobName);
+            long len = SwiftPerms.execThrows(() -> {
+                Files.createDirectories(path.getParent());
+                return Files.copy(in, path, REPLACE_EXISTING);
+            });
             if (logger.isDebugEnabled()) {
                 logger.debug("Stored [" + len + "] bytes in [" + path + "]");
             }
