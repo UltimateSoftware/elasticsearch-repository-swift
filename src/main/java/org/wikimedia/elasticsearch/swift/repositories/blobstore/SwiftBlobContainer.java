@@ -40,21 +40,19 @@ import org.javaswift.joss.model.Directory;
 import org.javaswift.joss.model.DirectoryOrObject;
 import org.javaswift.joss.model.StoredObject;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
-import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
+import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
 import org.wikimedia.elasticsearch.swift.util.stream.DataHashInputStream;
 import org.wikimedia.elasticsearch.swift.util.stream.JossInputStream;
 import org.wikimedia.elasticsearch.swift.util.stream.LocalBlobInputStream;
 import org.wikimedia.elasticsearch.swift.util.stream.StreamClosedException;
 
-import java.io.InputStream;
 import java.io.IOException;
-
+import java.io.InputStream;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -447,25 +445,31 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                 return objectInfo;
             }
             catch (NotFoundException e) {
-                if (objectInfo != null && objectInfo.stream != null){
-                    objectInfo.stream.close();
-                }
+                closeObjectStream(objectInfo, objectName);
 
-                // this conversion is necessary for tests to pass
+                // upstream code expect NoSuchFileException, even though this is not a file system
                 String message = "cannot read object, it does not exist [" + objectName + "]";
                 logger.warn(message);
                 NoSuchFileException e2 = new NoSuchFileException(message);
                 e2.initCause(e);
                 throw e2;
             }
-            catch (Exception e){
-                if (objectInfo != null && objectInfo.stream != null){
-                    objectInfo.stream.close();
-                }
-
+            catch (Exception e) {
+                closeObjectStream(objectInfo, objectName);
                 logger.warn("cannot read object [" + objectName + "]", e);
                 throw e;
             }});
+    }
+
+    private void closeObjectStream(ObjectInfo objectInfo, String objectName){
+        if (objectInfo != null && objectInfo.stream != null){
+            try {
+                objectInfo.stream.close();
+            }
+            catch (Exception e2) {
+                logger.warn("Cannot close stream for [" + objectName + "]", e2);
+            }
+        }
     }
 
     private InputStream wrapObjectStream(String objectName, ObjectInfo object) {
