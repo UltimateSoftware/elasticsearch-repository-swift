@@ -18,14 +18,14 @@ package org.wikimedia.elasticsearch.swift.util.stream;
 
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.codec.digest.DigestUtils;
-import org.apache.commons.io.input.ProxyInputStream;
 import org.elasticsearch.common.blobstore.BlobStoreException;
 
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;
 
-public class DataHashInputStream extends ProxyInputStream {
+public class DataHashInputStream extends FilterInputStream {
     private final String objectName;
     private final String dataHash;
     private String actualDataHash;
@@ -67,22 +67,10 @@ public class DataHashInputStream extends ProxyInputStream {
     }
 
     @Override
-    protected void handleIOException(IOException e) {
-        throw new BlobStoreException("failure reading from [" + objectName + "]", e);
-    }
-
-    @Override
     public int read() throws IOException {
         final int result = super.read();
         digestAfterRead(result);
         return result;
-    }
-
-    @Override
-    public int read(byte[] b) throws IOException {
-        final int bytesRead = super.read(b);
-        digestAfterRead(b, 0, bytesRead);
-        return bytesRead;
     }
 
     @Override
