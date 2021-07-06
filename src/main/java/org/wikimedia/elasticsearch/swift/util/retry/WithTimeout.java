@@ -25,14 +25,13 @@ import org.elasticsearch.threadpool.ThreadPool;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
 
 import java.util.concurrent.Callable;
-import java.util.concurrent.TimeUnit;
 
 public interface WithTimeout {
-    <T> T retry(long interval, long timeout, TimeUnit timeUnit, Callable<T> callable) throws Exception;
+    <T> T retry(TimeValue interval, TimeValue timeout, Callable<T> callable) throws Exception;
 
-    <T> T retry(long interval, long timeout, TimeUnit timeUnit, int attempts, Callable<T> callable) throws Exception;
+    <T> T retry(TimeValue interval, TimeValue timeout, int attempts, Callable<T> callable) throws Exception;
 
-    <T> T timeout(long timeout, TimeUnit timeUnit, Callable<T> callable) throws Exception;
+    <T> T timeout(TimeValue timeout, Callable<T> callable) throws Exception;
 
     class Factory {
         private final Logger logger;

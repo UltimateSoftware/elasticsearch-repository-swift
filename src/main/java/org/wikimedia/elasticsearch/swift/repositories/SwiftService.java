@@ -23,6 +23,7 @@ import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.common.component.AbstractLifecycleComponent;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.javaswift.joss.client.factory.AccountConfig;
 import org.javaswift.joss.client.factory.AccountFactory;
@@ -32,8 +33,6 @@ import org.javaswift.joss.model.Account;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
 import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
 
-import java.util.concurrent.TimeUnit;
-
 public class SwiftService extends AbstractLifecycleComponent {
     private static final String V3_AUTH_URL_SUFFIX = "/auth/tokens";
 
@@ -42,8 +41,8 @@ public class SwiftService extends AbstractLifecycleComponent {
     private final boolean allowCaching;
     private final WithTimeout.Factory withTimeoutFactory;
     private final ThreadPool threadPool;
-    private final int retryIntervalS;
-    private final int shortOperationTimeoutS;
+    private final TimeValue retryInterval;
+    private final TimeValue shortOperationTimeout;
     private final int retryCount;
 
     /**
@@ -59,8 +58,8 @@ public class SwiftService extends AbstractLifecycleComponent {
         this.threadPool = threadPool;
         allowCaching = SwiftRepository.Swift.ALLOW_CACHING_SETTING.get(envSettings);
         withTimeoutFactory = new WithTimeout.Factory(envSettings, logger);
-        retryIntervalS = SwiftRepository.Swift.RETRY_INTERVAL_S_SETTING.get(envSettings);
-        shortOperationTimeoutS = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_S_SETTING.get(envSettings);
+        retryInterval = SwiftRepository.Swift.RETRY_INTERVAL_SETTING.get(envSettings);
+        shortOperationTimeout = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_SETTING.get(envSettings);
         retryCount = SwiftRepository.Swift.RETRY_COUNT_SETTING.get(envSettings);
     }
 
@@ -94,7 +93,7 @@ public class SwiftService extends AbstractLifecycleComponent {
     }
 
     private Account createAccount(final AccountConfig conf) throws Exception {
-        return withTimeout().retry(retryIntervalS, shortOperationTimeoutS, TimeUnit.SECONDS, retryCount, () -> {
+        return withTimeout().retry(retryInterval, shortOperationTimeout, retryCount, () -> {
             try {
                 return SwiftPerms.exec(() -> new AccountFactory(conf).createAccount());
             }
