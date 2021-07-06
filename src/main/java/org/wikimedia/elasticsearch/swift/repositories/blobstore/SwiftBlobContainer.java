@@ -28,7 +28,6 @@ import org.elasticsearch.common.blobstore.BlobStoreException;
 import org.elasticsearch.common.blobstore.DeleteResult;
 import org.elasticsearch.common.blobstore.support.AbstractBlobContainer;
 import org.elasticsearch.common.blobstore.support.PlainBlobMetaData;
-import org.elasticsearch.common.io.PathUtils;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -41,18 +40,16 @@ import org.javaswift.joss.model.DirectoryOrObject;
 import org.javaswift.joss.model.StoredObject;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
+import org.wikimedia.elasticsearch.swift.util.blob.SavedBlob;
 import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
 import org.wikimedia.elasticsearch.swift.util.stream.DataHashInputStream;
 import org.wikimedia.elasticsearch.swift.util.stream.JossInputStream;
-import org.wikimedia.elasticsearch.swift.util.stream.LocalBlobInputStream;
 import org.wikimedia.elasticsearch.swift.util.stream.StreamClosedException;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -60,8 +57,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
-
-import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 /**
  * Swift's implementation of the AbstractBlobContainer
@@ -71,7 +66,9 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
     // Our local swift blob store instance
     private final SwiftBlobStore blobStore;
+
     private final SwiftRepository repository;
+    private final SavedBlob.Factory blobSaver;
 
     // The root path for blobs. Used by buildKey to build full blob names
     private final String keyPath;
@@ -86,16 +83,18 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
     private final ExecutorService executor;
     private final WithTimeout.Factory withTimeoutFactory;
-    private final String blobLocalDir;
 
     /**
      * Constructor
      * @param blobStore The blob store to use for operations
      * @param path The BlobPath to find blobs in
+     * @param blobSaver factory to persist blobs
      */
-    protected SwiftBlobContainer(SwiftBlobStore blobStore, BlobPath path) {
+    protected SwiftBlobContainer(SwiftBlobStore blobStore, BlobPath path, SavedBlob.Factory blobSaver) {
         super(path);
         this.blobStore = blobStore;
+        this.blobSaver = blobSaver;
+
         repository = blobStore.getRepository();
         final Settings envSettings = blobStore.getEnvSettings();
 
@@ -117,7 +116,6 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
         shortOperationTimeout = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_SETTING.get(envSettings);
         longOperationTimeout = SwiftRepository.Swift.LONG_OPERATION_TIMEOUT_SETTING.get(envSettings);
         streamWrite = SwiftRepository.Swift.STREAM_WRITE_SETTING.get(envSettings);
-        blobLocalDir = SwiftRepository.Swift.BLOB_LOCAL_DIR_SETTING.get(envSettings);
     }
 
     private WithTimeout withTimeout() {
@@ -379,54 +377,23 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
                           boolean failIfAlreadyExists) throws IOException {
         if (executor != null && allowConcurrentIO && !streamWrite) {
             // async execution races against the InputStream closed in the caller. Read all data from independent storage.
-            final Path path = copyBlob(blobName, in);
+            SavedBlob savedBlob = blobSaver.create(keyPath, blobName, in);
 
-            Future<Void> task = executor.submit(() ->
-                SwiftPerms.execThrows(() -> {
-                    try(LocalBlobInputStream lbis = new LocalBlobInputStream(path)) {
-                        internalWriteBlob(blobName, lbis, blobSize, failIfAlreadyExists);
-                    }
-                    finally {
-                        cleanupBlob(path);
-                    }
-                    return null;
-                }));
+            Future<Void> task = executor.submit(() -> SwiftPerms.execThrows(() -> {
+                try(InputStream sbis = savedBlob.getReentrantStream()) {
+                    internalWriteBlob(blobName, sbis, blobSize, failIfAlreadyExists);
+                }
+                finally {
+                    savedBlob.close();
+                }
+                return null;
+            }));
 
             repository.addWrite(blobName, task);
             return;
         }
 
         internalWriteBlob(blobName, in, blobSize, failIfAlreadyExists);
-    }
-
-    private Path copyBlob(String blobName, InputStream in) throws IOException {
-        try {
-            final Path path = PathUtils.getDefaultFileSystem().getPath(blobLocalDir, keyPath, blobName);
-            long len = SwiftPerms.execThrows(() -> {
-                Files.createDirectories(path.getParent());
-                return Files.copy(in, path, REPLACE_EXISTING);
-            });
-            if (logger.isDebugEnabled()) {
-                logger.debug("Stored [" + len + "] bytes in [" + path + "]");
-            }
-            return path;
-        }
-        catch (IOException | RuntimeException e){
-            throw e;
-        }
-        catch(Exception e){
-            throw new BlobStoreException("Unable to copy blob ["+blobName+"]", e);
-        }
-    }
-
-    private void cleanupBlob(Path path) {
-        try {
-            Files.delete(path);
-            logger.debug("Deleted file ["+path+"]");
-        }
-        catch (Exception e) {
-            logger.warn("Unable to delete file [" + path + "]", e);
-        }
     }
 
     /**

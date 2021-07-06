@@ -27,6 +27,7 @@ import org.javaswift.joss.model.Account;
 import org.javaswift.joss.model.Container;
 import org.wikimedia.elasticsearch.swift.SwiftPerms;
 import org.wikimedia.elasticsearch.swift.repositories.SwiftRepository;
+import org.wikimedia.elasticsearch.swift.util.blob.SavedBlob;
 import org.wikimedia.elasticsearch.swift.util.retry.WithTimeout;
 
 /**
@@ -39,6 +40,7 @@ public class SwiftBlobStore implements BlobStore {
     private final String containerName;
 
     private final Settings envSettings;
+
     public Settings getEnvSettings() {
         return envSettings;
     }
@@ -48,11 +50,12 @@ public class SwiftBlobStore implements BlobStore {
     private final Account auth;
     
     private final SwiftRepository repository;
-    private final WithTimeout.Factory withTimeoutFactory;
 
+    private final WithTimeout.Factory withTimeoutFactory;
     private final TimeValue retryInterval;
     private final TimeValue shortOperationTimeout;
     private final int retryCount;
+    private final String blobLocalDir;
 
     /**
      * Constructor. Sets up the container mostly.
@@ -75,6 +78,7 @@ public class SwiftBlobStore implements BlobStore {
         retryInterval = SwiftRepository.Swift.RETRY_INTERVAL_SETTING.get(envSettings);
         retryCount = SwiftRepository.Swift.RETRY_COUNT_SETTING.get(envSettings);
         shortOperationTimeout = SwiftRepository.Swift.SHORT_OPERATION_TIMEOUT_SETTING.get(envSettings);
+        blobLocalDir = SwiftRepository.Swift.BLOB_LOCAL_DIR_SETTING.get(envSettings);
     }
 
     private WithTimeout withTimeout(){
@@ -126,7 +130,7 @@ public class SwiftBlobStore implements BlobStore {
      */
     @Override
     public BlobContainer blobContainer(BlobPath path) {
-        return new SwiftBlobContainer(this, path);
+        return new SwiftBlobContainer(this, path, new SavedBlob.Factory(blobLocalDir));
     }
 
     /**
