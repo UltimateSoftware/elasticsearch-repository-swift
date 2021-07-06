@@ -33,14 +33,16 @@ public class DataHashInputStreamTests extends LuceneTestCase {
     private static String hash;
 
     @BeforeClass
-    public static void BeforeClass() {
+    public static void beforeClass() {
         data = new byte[128];
         Randomness.get().nextBytes(data);
         hash = DigestUtils.md5Hex(data);
     }
 
     @Before
-    public void SetUp() {
+    @Override
+    public void setUp() throws Exception {
+        super.setUp();
         stream = new DataHashInputStream("test", new ByteArrayInputStream(data), hash);
     }
 

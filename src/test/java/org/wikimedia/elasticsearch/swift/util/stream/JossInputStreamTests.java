@@ -34,7 +34,10 @@ public class JossInputStreamTests extends LuceneTestCase {
     private JossInputStream stream;
 
     @Before
-    public void SetUp() throws IOException {
+    @Override
+    public void setUp() throws Exception {
+        super.setUp();
+
         mockStream = mock(InputStream.class);
         when(mockStream.read()).thenReturn(-1);
         when(mockStream.read(any(byte[].class))).thenReturn(-1);

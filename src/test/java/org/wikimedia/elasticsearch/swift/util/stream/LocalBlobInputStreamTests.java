@@ -35,16 +35,20 @@ public class LocalBlobInputStreamTests extends LuceneTestCase {
     private LocalBlobInputStream stream;
 
     @Before
-    public void SetUp() throws IOException {
+    @Override
+    public void setUp() throws Exception {
+        super.setUp();
         tmpFile = PathUtils.get("stream.test");
         Files.copy(new ByteArrayInputStream(sampleData.getBytes(StandardCharsets.US_ASCII)), tmpFile);
         stream = new LocalBlobInputStream(tmpFile);
     }
 
     @After
-    public void TearDown() throws IOException {
+    @Override
+    public void tearDown() throws Exception {
         stream.close();
         Files.delete(tmpFile);
+        super.tearDown();
     }
 
     public void testReadThrowsClosedExceptionWhenStreamIsClosed() throws IOException {
