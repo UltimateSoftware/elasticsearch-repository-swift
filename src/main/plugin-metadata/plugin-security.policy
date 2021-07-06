@@ -6,6 +6,7 @@ grant {
   // replace * with safe address:port combination(s)
   // permission java.net.SocketPermission "*", "connect,resolve";
   // replace path with local_blob_dir value
+  // permission java.io.FilePermission "/tmp", "read,write,delete";
   // permission java.io.FilePermission "/tmp/repository_swift", "read,write,delete";
   // permission java.io.FilePermission "/tmp/repository_swift/-", "read,write,delete";
 };
