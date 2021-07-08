@@ -58,6 +58,7 @@ Plugin settings to be placed in elasticsearch YAML configuration. Keep defaults,
 | repository_swift.long_operation_timeout      | timeout for long operations (like writing of multi-Gig data stream) (default 20m), must include unit suffix, like ms, s, m.
 | repository_swift.snapshot_timeout            | timeout of taking a snapshot in minutes (default 360m), must include unit suffix, like ms, s, m.
 | repository_swift.stream_write                | true or false (default). Reduce memory footprint on snapshot, at the expense of not writing concurrently
+| repository_swift.blob_local_dir              | path to temoporary storage for blobs in filesystem. Default is _/tmp/repository_swift_
 
 ## To debug in Eclipse
 Since Swift has logging dependencies you have to be careful about debugging in Eclipse.
