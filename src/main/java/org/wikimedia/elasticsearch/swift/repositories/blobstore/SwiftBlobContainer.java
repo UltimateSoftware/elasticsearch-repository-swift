@@ -488,8 +488,11 @@ public class SwiftBlobContainer extends AbstractBlobContainer {
 
                         object.uploadObject(instructions);
                         if (logger.isDebugEnabled()){
-                            logger.debug("uploaded object [" + objectName + "], size=[" + blobSize + "], md5=[" +
-                                         instructions.getMd5() + "]");
+                            logger.debug("uploaded object [" + objectName +
+                                "], size=[" + blobSize +
+                                "], md5=[" + instructions.getMd5() +
+                                "], stream=[" + fromStream +
+                                "]");
                         }
                         return null;
                     }

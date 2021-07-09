@@ -32,11 +32,21 @@ import java.nio.file.StandardOpenOption;
  */
 public class LocalBlobInputStream extends InputStream {
     private final FileChannel channel;
+    private final Path path;
     private long markedPos;
     private volatile boolean closed;
 
     public LocalBlobInputStream(Path path) throws IOException {
+        this.path = path;
         channel = FileChannel.open(path, StandardOpenOption.READ);
+    }
+
+    @Override
+    /***
+     * Useful for debugging
+     */
+    public String toString() {
+        return "LocalBlobInputStream{" + path + '}';
     }
 
     /**
