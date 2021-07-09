@@ -126,7 +126,7 @@ public class SwiftRepository extends BlobStoreRepository {
             Setting.Property.NodeScope);
 
         Setting<String> BLOB_LOCAL_DIR_SETTING = Setting.simpleString(PREFIX + ".blob_local_dir",
-            "/tmp/"+PREFIX,
+            "/var/"+PREFIX,
             Setting.Property.NodeScope);
     }
 
