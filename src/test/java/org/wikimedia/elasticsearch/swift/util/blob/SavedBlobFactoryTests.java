@@ -16,6 +16,7 @@
 package org.wikimedia.elasticsearch.swift.util.blob;
 
 import org.apache.lucene.util.LuceneTestCase;
+import org.elasticsearch.common.Randomness;
 import org.junit.Before;
 
 import java.io.ByteArrayInputStream;
@@ -37,7 +38,9 @@ public class SavedBlobFactoryTests extends LuceneTestCase {
     }
 
     public void testFactoryCreateReadsInputStreamFully() throws IOException {
-        try (SavedBlob blob = factory.create("one", "two", input);
+        try (SavedBlob blob = factory.create(String.valueOf(Randomness.get().nextLong()),
+                String.valueOf(Randomness.get().nextLong()),
+                input);
              InputStream in = blob.getReentrantStream()){
 
             byte[] bytestr = new byte[sample.length()];
@@ -47,8 +50,10 @@ public class SavedBlobFactoryTests extends LuceneTestCase {
     }
 
     public void testFactoryCreateCombinesPathComponents() throws IOException {
-        try (SavedBlob blob = factory.create("one", "two", input)){
-            assertEquals("/tmp/one/two", blob.getPath().toString());
+        final String one = String.valueOf(Randomness.get().nextLong());
+        final String two = String.valueOf(Randomness.get().nextLong());
+        try (SavedBlob blob = factory.create(one, two, input)){
+            assertEquals("/tmp/"+one+"/"+two, blob.getPath().toString());
         }
     }
 }

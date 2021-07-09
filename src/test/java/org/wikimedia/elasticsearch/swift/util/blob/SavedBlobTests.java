@@ -16,6 +16,7 @@
 package org.wikimedia.elasticsearch.swift.util.blob;
 
 import org.apache.lucene.util.LuceneTestCase;
+import org.elasticsearch.common.Randomness;
 import org.junit.After;
 import org.junit.Before;
 
@@ -34,7 +35,9 @@ public class SavedBlobTests extends LuceneTestCase {
     public void setUp() throws Exception {
         super.setUp();
         blob = new SavedBlob.Factory("/tmp")
-            .create("one", "two", new ByteArrayInputStream("foo".getBytes(StandardCharsets.US_ASCII)));
+            .create(String.valueOf(Randomness.get().nextLong()),
+                    String.valueOf(Randomness.get().nextLong()),
+                    new ByteArrayInputStream("foo".getBytes(StandardCharsets.US_ASCII)));
     }
 
     @After
