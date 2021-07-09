@@ -41,12 +41,12 @@ public class LocalBlobInputStream extends InputStream {
         channel = FileChannel.open(path, StandardOpenOption.READ);
     }
 
-    @Override
-    /***
-     * Useful for debugging
+    /**
+     * Useful for debugging.
      */
+    @Override
     public String toString() {
-        return "LocalBlobInputStream{" + path + '}';
+        return super.toString() + '{' + path + '}';
     }
 
     /**
